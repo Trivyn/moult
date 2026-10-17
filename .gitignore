@@ -1,5 +1,4 @@
 target/
-Cargo.lock
 # Downloaded WordNet releases — pinned in data/MANIFEST.toml, never committed
 data/cache/
 .claude/
@@ -10,3 +9,6 @@ data/cache/
 !/.moosedev/kg.nq
 /.env
 .mcp.json
+
+# NLTK differential: downloaded WordNet data
+tools/nltk-diff/.cache/

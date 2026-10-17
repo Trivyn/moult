@@ -1,0 +1,3 @@
+[alias]
+xtask = "run -p xtask --"
+xtask-inflect = "run -p xtask --features inflect -- inflect"

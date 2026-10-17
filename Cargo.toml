@@ -11,12 +11,18 @@ repository = "https://github.com/Trivyn/moult"
 keywords = ["inflection", "pluralize", "singularize", "wordnet", "lemmatize"]
 categories = ["text-processing"]
 readme = "README.md"
+# Paths are anchored with a leading "/": an unanchored "LICENSE" matches a file
+# of that name at any depth (e.g. inside an ignored download cache).
 include = [
-    "src/**/*",
-    "Cargo.toml",
-    "README.md",
-    "LICENSE",
-    "LICENSE-DATA",
+    "/src/**/*",
+    "/tests/**/*",
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE",
+    "/LICENSE-DATA",
 ]
 
 [dependencies]
+
+[workspace]
+members = ["xtask"]

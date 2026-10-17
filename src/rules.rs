@@ -1,0 +1,144 @@
+//! The suffix rules, with no data. Every function here is pure: the caller
+//! supplies the dictionary check, so the same code runs in the crate and in
+//! the data generator that audits it.
+
+use alloc::string::String;
+use alloc::vec::Vec;
+
+/// The fewest characters a singular candidate may have. It keeps `os` from
+/// becoming `o` and `pas` from becoming `pa`.
+const MIN_SINGULAR_LEN: usize = 3;
+
+fn is_vowel(c: char) -> bool {
+    matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')
+}
+
+/// The regular plural of `lemma`: consonant + `y` becomes `ies`; a word
+/// ending in `s`, `x`, `z`, `ch` or `sh` takes `es`; anything else takes `s`.
+/// Words in `-o` and `-f` take a plain `s`; `-oes` and `-ves` plurals come
+/// only from WordNet's form list.
+pub(crate) fn regular_plural(lemma: &str) -> String {
+    let mut out = String::from(lemma);
+    let mut rev = lemma.chars().rev();
+    match (rev.next(), rev.next()) {
+        (Some('y'), Some(before)) if !is_vowel(before) => {
+            out.pop();
+            out.push_str("ies");
+        }
+        (Some('s' | 'x' | 'z'), _) | (Some('h'), Some('c' | 's')) => out.push_str("es"),
+        _ => out.push('s'),
+    }
+    out
+}
+
+/// The fewest characters a word ending in `-sis` needs for the `-ses` plural.
+/// It leaves `sis` itself and short words like `isis` to the regular rule.
+const MIN_SIS_LEN: usize = 5;
+
+/// Whether the `-sis` to `-ses` plural applies to `lemma`.
+pub(crate) fn is_sis_word(lemma: &str) -> bool {
+    lemma.len() >= MIN_SIS_LEN && lemma.ends_with("sis")
+}
+
+/// The plural of `lemma` when no list and no WordNet form decides it, in rule
+/// order:
+///
+/// 1. `-man` to `-men` (policeman, fireman) for a known noun that is not in
+///    `man_regular`, the nouns whose `man` is not the word (human, shaman)
+/// 2. `-ch` to `-chs` (stomachs, monarchs) for a word in `ch_regular`, the
+///    nouns whose `ch` is not the sound in church
+/// 3. `-sis` to `-ses` (mitosis, apoptosis) for any word of at least five
+///    characters, known or not
+/// 4. [`regular_plural`]
+pub(crate) fn plural(
+    lemma: &str,
+    is_known_noun: impl Fn(&str) -> bool,
+    man_regular: impl Fn(&str) -> bool,
+    ch_regular: impl Fn(&str) -> bool,
+) -> String {
+    if let Some(stem) = lemma.strip_suffix("man") {
+        if is_known_noun(lemma) && !man_regular(lemma) {
+            return String::from(stem) + "men";
+        }
+    }
+    if lemma.ends_with("ch") && ch_regular(lemma) {
+        return String::from(lemma) + "s";
+    }
+    if is_sis_word(lemma) {
+        return String::from(&lemma[..lemma.len() - 3]) + "ses";
+    }
+    regular_plural(lemma)
+}
+
+/// The singular candidates for `word`, in rule order. Every candidate has at
+/// least three characters. Nothing here checks a dictionary:
+///
+/// 1. `-ies` to `-ie` (cookies, movies)
+/// 2. `-ies` to `-y` (cities)
+/// 3. `-ses`, `-xes`, `-zes`, `-ches`, `-shes` to the stem (boxes, churches)
+/// 4. `-s` to the stem, except after `ss` (cats)
+/// 5. `-oes` to `-o` (heroes)
+/// 6. `-ves` to `-f`, then to `-fe` (wolves, knives)
+/// 7. `-men` to `-man` (policemen, women)
+/// 8. `-ses` to `-sis` (mitoses, theses)
+///
+/// The ordinary strips come first, so a word both rules reach resolves to the
+/// plain strip ("ellipses" to "ellipse"); the rarer rewrites 7 and 8 come
+/// last. Where two nouns do compete, the policy lists settle the word before
+/// the rules run. Rules 7 and 8 need a non-empty stem, so `men` and `ses`
+/// alone never fire.
+pub(crate) fn singular_candidates(word: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut push = |stem: &str, tail: &str| {
+        if stem.chars().count() + tail.len() >= MIN_SINGULAR_LEN {
+            let mut s = String::from(stem);
+            s.push_str(tail);
+            out.push(s);
+        }
+    };
+    if let Some(stem) = word.strip_suffix("ies") {
+        push(stem, "ie");
+        push(stem, "y");
+    }
+    for tail in ["ses", "xes", "zes", "ches", "shes"] {
+        if word.ends_with(tail) {
+            push(&word[..word.len() - 2], "");
+        }
+    }
+    if word.ends_with('s') && !word.ends_with("ss") {
+        push(&word[..word.len() - 1], "");
+    }
+    if let Some(stem) = word.strip_suffix("oes") {
+        push(stem, "o");
+    }
+    if let Some(stem) = word.strip_suffix("ves") {
+        push(stem, "f");
+        push(stem, "fe");
+    }
+    if let Some(stem) = word.strip_suffix("men") {
+        if !stem.is_empty() {
+            push(stem, "man");
+        }
+    }
+    if let Some(stem) = word.strip_suffix("ses") {
+        if !stem.is_empty() {
+            push(stem, "sis");
+        }
+    }
+    out
+}
+
+/// The first candidate of [`singular_candidates`] that `is_noun` accepts.
+/// A `-men` word never reduces to a noun in `man_regular`: those nouns take
+/// `-s`, so "dolmen" is not the plural of "dolman" and "limen" is not the
+/// plural of "liman".
+pub(crate) fn checked_singular(
+    word: &str,
+    is_noun: impl Fn(&str) -> bool,
+    man_regular: impl Fn(&str) -> bool,
+) -> Option<String> {
+    let men = word.ends_with("men");
+    singular_candidates(word)
+        .into_iter()
+        .find(|c| is_noun(c) && !(men && man_regular(c)))
+}

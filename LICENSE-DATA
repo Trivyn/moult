@@ -5,9 +5,18 @@ WordNet project (https://github.com/globalwordnet/english-wordnet).
 Open English WordNet is licensed under the Creative Commons Attribution 4.0
 International License (CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
 
-Changes made: noun lemmas and irregular noun forms were extracted from the
-WN-LMF XML release and written out as sorted Rust tables. No other data is
-used.
+Changes made: the following were extracted from the WN-LMF XML release:
+single-token noun lemmas, lower-cased (src/nouns.txt); lemmas containing a
+space were dropped; lemmas written only with capital letters were kept in a
+separate list of known words (src/names.txt); and the irregular noun forms,
+as (form, lemma) pairs, unfiltered; and single-token lemmas of the other
+parts of speech other than noun (verbs, adjectives, adverbs; WordNet files
+interjections such as "alas" as adverbs) that end in "s", lower-cased, kept
+in src/others.txt and used only to recognise words WordNet lists as non-nouns.
+Everything is written out sorted by byte order to src/data.rs, src/nouns.txt,
+src/names.txt and src/others.txt. No other WordNet data
+is used. The hand-written policy lists in src/policy.rs are not WordNet data;
+they are crate source under the Apache-2.0 licence.
 
 Open English WordNet is derived from Princeton WordNet 3.0:
 

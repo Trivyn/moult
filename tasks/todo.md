@@ -304,3 +304,23 @@ Other findings:
   The CHANGELOG rule still makes sense here, because moult's outputs are canonical lexical
   forms. `CLAUDE.md` also has two "Development practices" sections. I'll leave it alone
   unless you ask.
+
+---
+
+## Status (2026-10-17): implemented, reviewed, uncommitted
+
+All steps done; codex (`gpt-6-sol`) review rounds 1–5 run (rounds 4–5 because round 3 still had a
+showstopper). Round 5: 0 showstopper, 1 major (IRREGULAR plurals not checked to be real words) —
+fixed: an IRREGULAR plural must be a WordNet word or a compound of a WordNet irregular form.
+
+Deviations from the plan above, each recorded in MOOSEDev:
+- P4: no mechanical filter in the generator; doubled forms (busses, quizzes) classified by hand.
+- P5 (new): PLURAL_CHOICE may prefer the modern plural over an archaic WordNet form.
+- P6 (new): -man→-men (MAN_REGULAR), -sis→-ses, and /k/ -ch → -chs (CH_REGULAR).
+- P7 (new): pluralize leaves recognised plurals unchanged.
+- P3: the unknown-word fallback is opt-in (`Inflector::builder().guess_unknown(true)`); the
+  default never guesses. Added src/others.txt (WordNet non-noun lemmas ending in -s).
+- D8: case restoration is per character with an explicit origin (rule suffix vs form).
+- LEMMA_TO_PLURAL is a u16 index into FORM_TO_LEMMA; xtask's moult dependency is behind the
+  `inflect` feature so the generator never depends on its own output.
+- Size: +0.61 MB release binary delta (target was ≤ 0.6 MB); clean build 0.3 s; .crate 230 KB.

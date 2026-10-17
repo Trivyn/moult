@@ -1,7 +1,10 @@
 //! The acceptance cases: words that hand-written suffix rules get wrong in
-//! one direction or the other. Ignored until the skeleton is implemented.
-//! Words with two right answers ("leaves": leaf or leave; "axes": axis or
-//! axe) are left out until the crate has a policy for them.
+//! one direction or the other. Words with two right answers ("leaves": leaf
+//! or leave; "axes": axis, ax or axe) are here only because the crate states
+//! a policy for them (src/policy.rs): the common modern reading wins, and a
+//! word with no clear reading is left unchanged.
+
+use std::borrow::Cow;
 
 const SINGULAR: &[(&str, &str)] = &[
     // Regular plurals.
@@ -58,9 +61,96 @@ const SINGULAR: &[(&str, &str)] = &[
     ("ISBN", "ISBN"),
     ("ISBNs", "ISBN"),
     ("IDs", "ID"),
+    // Words with two readings, settled by policy.
+    ("leaves", "leaf"),
+    ("axes", "axis"),
+    ("corpses", "corpse"),
+    ("senses", "sense"),
+    ("busses", "bus"),
+    ("Kansas", "Kansas"),
+    // Compounds of man and Greek nouns in -sis.
+    ("policemen", "policeman"),
+    ("women", "woman"),
+    ("mitoses", "mitosis"),
+    // Case survives past the changed part of the word.
+    ("Mothers-in-Law", "Mother-in-Law"),
+    // The default mode never guesses: a word no dictionary-checked step
+    // resolves is unchanged. The refused words below are also refused by the
+    // opt-in fallback (tests/guess.rs).
+    ("backwards", "backwards"),
+    ("afterwards", "afterwards"),
+    ("themselves", "themselves"),
+    ("superspecies", "superspecies"),
+    ("subseries", "subseries"),
+    ("facies", "facies"),
+    ("biomechanics", "biomechanics"),
+    ("tholos", "tholos"),
+    ("xyrichthys", "xyrichthys"),
+    ("agaricales", "agaricales"),
+    ("moses", "moses"),
+    ("ulysses", "ulysses"),
+    ("kubernetes", "kubernetes"),
+    ("Kubernetes", "Kubernetes"),
+    ("laches", "laches"),
+    ("abies", "abies"),
+    ("colluvies", "colluvies"),
+    ("hirsuties", "hirsuties"),
+    ("natchitoches", "natchitoches"),
+    ("lichenes", "lichenes"),
+    ("albanenses", "albanenses"),
+    // One character is never inflected.
+    ("s", "s"),
+    ("a", "a"),
+    // Words WordNet lists only as adverbs, adjectives or verbs are known:
+    // the unknown-word fallback must not strip their `s`.
+    ("perhaps", "perhaps"),
+    ("sometimes", "sometimes"),
+    ("besides", "besides"),
+    ("indoors", "indoors"),
+    ("afterwards", "afterwards"),
+    ("midships", "midships"),
+    ("always", "always"),
+    ("overseas", "overseas"),
+    // A -chs plural of a /k/ noun reduces by the checked -s rule.
+    ("stomachs", "stomach"),
+    ("monarchs", "monarch"),
+    ("epochs", "epoch"),
+    // Plurals WordNet does not list stay unchanged without the opt-in guess;
+    // tests/guess.rs shows what `guess_unknown(true)` does with them.
+    ("microservices", "microservices"),
+    ("namespaces", "namespaces"),
+    ("webhooks", "webhooks"),
+    // Compounds whose last part is a noun: the opt-in guess strips them to a
+    // non-word, the default leaves them alone.
+    ("afterhours", "afterhours"),
+    ("belowstairs", "belowstairs"),
+    // Plurals that dictionary-checked rules reduce.
+    ("endpoints", "endpoint"),
+    ("workflows", "workflow"),
+    ("widgets", "widget"),
+    // "elap" is no word, so even the opt-in guess leaves these alone.
+    ("elaps", "elaps"),
+    ("custodes", "custodes"),
+    // WordNet lists "alas" only as an interjection: no rule reduces it.
+    ("alas", "alas"),
+    // WordNet lists these as other parts of speech, yet they are noun plurals.
+    ("bats", "bat"),
+    ("nuts", "nut"),
+    ("tops", "top"),
 ];
 
 const PLURAL: &[(&str, &str)] = &[
+    // Case of an irregular plural follows the word; a rule suffix stays lower case.
+    ("CHILD", "CHILDREN"),
+    ("OX", "OXEN"),
+    ("Child", "Children"),
+    ("PERSON", "PEOPLE"),
+    ("MOUSE", "MICE"),
+    ("CRITERION", "CRITERIA"),
+    ("BOX", "BOXes"),
+    ("ISBN", "ISBNs"),
+    ("ID", "IDs"),
+    ("alas", "alas"),
     ("territory", "territories"),
     ("box", "boxes"),
     ("bus", "buses"),
@@ -80,27 +170,75 @@ const PLURAL: &[(&str, &str)] = &[
     ("data", "data"),
     ("ISBN", "ISBNs"),
     ("Territory", "Territories"),
+    ("policeman", "policemen"),
+    ("woman", "women"),
+    ("mitosis", "mitoses"),
+    // A ch pronounced /k/ takes a plain s; the controls below keep es.
+    ("stomach", "stomachs"),
+    ("monarch", "monarchs"),
+    ("epoch", "epochs"),
+    ("loch", "lochs"),
+    ("patriarch", "patriarchs"),
+    ("eunuch", "eunuchs"),
+    ("triptych", "triptychs"),
+    ("tech", "techs"),
+    ("church", "churches"),
+    ("march", "marches"),
+    ("larch", "larches"),
+    ("couch", "couches"),
+    ("beach", "beaches"),
+    ("speech", "speeches"),
+    // Already plural, so unchanged.
+    ("glasses", "glasses"),
+    ("men", "men"),
+    ("ID", "IDs"),
+    ("BOX", "BOXes"),
+    ("MOUSE", "MICE"),
+    ("Person", "People"),
+    ("quiz", "quizzes"),
+    ("gas", "gases"),
+    ("genus", "genera"),
+    ("brother", "brothers"),
+    // WordNet lists another noun's plural against these lemmas.
+    ("diva", "divas"),
+    ("sol", "sols"),
+    ("Mother-in-Law", "Mothers-in-Law"),
+    // Input that is not a word is returned unchanged.
+    ("41", "41"),
+    ("two words", "two words"),
+    // Unknown words ending in s are taken as plural already.
+    ("kubernetes", "kubernetes"),
+    ("Kubernetes", "Kubernetes"),
+    ("moses", "moses"),
+    ("facies", "facies"),
+    // Unknown words ending in s are taken as plural, with or without the guess.
+    ("elaps", "elaps"),
+    ("custodes", "custodes"),
+    // WordNet lists these only as another part of speech: no rule reduces them.
+    ("alas", "alas"),
+    // One character is never inflected.
+    ("s", "s"),
+    ("a", "a"),
+    ("I", "I"),
 ];
 
-fn check(cases: &[(&str, &str)], f: fn(&str) -> String) {
+fn check(cases: &[(&str, &str)], f: fn(&str) -> Cow<'_, str>) {
     let wrong: Vec<String> = cases
         .iter()
         .filter_map(|&(input, want)| {
             let got = f(input);
-            (got != want).then(|| format!("{input} -> {got} (want {want})"))
+            (&*got != want).then(|| format!("{input} -> {got} (want {want})"))
         })
         .collect();
     assert!(wrong.is_empty(), "wrong:\n{}", wrong.join("\n"));
 }
 
 #[test]
-#[ignore = "skeleton: singularize is not implemented"]
 fn singularize_cases() {
     check(SINGULAR, moult::singularize);
 }
 
 #[test]
-#[ignore = "skeleton: pluralize is not implemented"]
 fn pluralize_cases() {
     check(PLURAL, moult::pluralize);
 }

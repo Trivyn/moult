@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LexicalResource xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <Lexicon id="mini" label="Mini test lexicon" language="en" email="nobody@example.invalid" license="https://example.invalid/" version="0" url="https://example.invalid/">
+    <LexicalEntry id="e-lantern-n">
+      <Lemma writtenForm="lantern" partOfSpeech="n"/>
+      <Sense id="lantern-1" synset="s1"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-ferry-n">
+      <Lemma writtenForm="ferry" partOfSpeech="n"/>
+      <Sense id="ferry-1" synset="s2"/>
+      <Sense id="ferry-2" synset="s3"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-ferry-v">
+      <Lemma writtenForm="ferry" partOfSpeech="v"/>
+      <Form writtenForm="ferried"/>
+      <Sense id="ferry-v-1" synset="s4"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-quill-v">
+      <Lemma writtenForm="quillate" partOfSpeech="v"/>
+      <Sense id="quillate-1" synset="s5"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-goose-n">
+      <Lemma writtenForm="gander" partOfSpeech="n"/>
+      <Form writtenForm="gandri"/>
+      <Form writtenForm="ganders"/>
+      <Sense id="gander-1" synset="s6"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-fellow-n">
+      <Lemma writtenForm="fellow-traveler" partOfSpeech="n"/>
+      <Form writtenForm="fellows-traveler"/>
+      <Sense id="ft-1" synset="s7"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-ice-cream-n">
+      <Lemma writtenForm="sorbet bar" partOfSpeech="n"/>
+      <Form writtenForm="sorbet bars"/>
+      <Sense id="sb-1" synset="s8"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-Zorland-n">
+      <Lemma writtenForm="Zorland" partOfSpeech="n"/>
+      <Sense id="zorland-1" synset="s9"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-Pip-n">
+      <Lemma writtenForm="Pip" partOfSpeech="n"/>
+      <Sense id="pip-cap" synset="s10"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-pip-n">
+      <Lemma writtenForm="pip" partOfSpeech="n"/>
+      <Sense id="pip-1" synset="s11"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-o-n">
+      <Lemma writtenForm="o&apos;clock" partOfSpeech="n"/>
+      <Form writtenForm="o&apos;clocks"/>
+      <Sense id="oc-1" synset="s12"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-cafe-n">
+      <Lemma writtenForm="café" partOfSpeech="n"/>
+      <Form writtenForm="cafés"/>
+      <Sense id="cafe-1" synset="s13"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-ox-n">
+      <Lemma writtenForm="yakk" partOfSpeech="n"/>
+      <Form writtenForm="yakken"/>
+      <Sense id="yakk-1" synset="s14"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-adj">
+      <Lemma writtenForm="brisk" partOfSpeech="a"/>
+      <Sense id="brisk-1" synset="s15"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-perhaps-r">
+      <Lemma writtenForm="perhaps" partOfSpeech="r"/>
+      <Sense id="perhaps-1" synset="s16"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-pips-v">
+      <Lemma writtenForm="pip" partOfSpeech="v"/>
+      <Sense id="pip-v-1" synset="s17"/>
+    </LexicalEntry>
+  </Lexicon>
+</LexicalResource>

@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -14,5 +17,41 @@ jobs:
         with:
           components: rustfmt, clippy
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+      # The published file list must match the reference. .cargo_vcs_info.json
+      # is written only when the package is built inside a git checkout, so it
+      # is filtered out on both sides of the comparison.
+      - name: Check packaged file list
+        run: |
+          cargo package -p moult --list --allow-dirty \
+            | grep -v '^\.cargo_vcs_info\.json$' \
+            | LC_ALL=C sort \
+            | diff - xtask/expected-package-files.txt
+
+  msrv:
+    # moult's declared rust-version is 1.70. Cargo.lock is kept at lockfile
+    # format version 3 on purpose: Cargo 1.70 cannot read version 4, which
+    # current Cargo writes by default. The lock is therefore not deleted or
+    # regenerated here. Deleting it would make Cargo 1.70 resolve the whole
+    # workspace, including xtask's dependencies, which may need a newer
+    # compiler. moult itself has no dependencies, so the lock only matters
+    # for the workspace.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.70
+      - run: cargo build -p moult
+      - run: cargo test -p moult --lib --tests
+
+  data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: data/cache
+          key: wordnet-${{ hashFiles('data/MANIFEST.toml') }}
+      - run: cargo xtask gen-data --check
+      - run: cargo xtask report
