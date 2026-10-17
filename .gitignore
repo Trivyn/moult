@@ -1,0 +1,12 @@
+target/
+Cargo.lock
+# Downloaded WordNet releases — pinned in data/MANIFEST.toml, never committed
+data/cache/
+.claude/
+
+# MOOSEDev: ignore the derived store/vector cache and local config,
+# but commit the canonical project-graph text (kg.nq).
+/.moosedev/*
+!/.moosedev/kg.nq
+/.env
+.mcp.json

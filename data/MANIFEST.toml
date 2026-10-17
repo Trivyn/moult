@@ -1,0 +1,15 @@
+# The pinned Open English WordNet release the word tables in src/data.rs are
+# generated from. The generator downloads `url`, checks `sha256`, and refuses
+# to write the tables on a mismatch. Bumping the release is a deliberate
+# change: update both fields and regenerate.
+#
+# The WN-LMF XML, not the Turtle release, is the input: the 2025 Turtle files
+# (base and "plus") carry no inflected forms, while the XML lists the
+# irregular ones as <Form writtenForm="..."/> under each lexical entry.
+
+[source]
+name = "Open English WordNet"
+edition = "2025"
+license = "CC-BY-4.0"
+url = "https://github.com/globalwordnet/english-wordnet/releases/download/2025-edition/english-wordnet-2025.xml.gz"
+sha256 = "9ca6d1dcb75f822fdd66617f7d9da48142ace38dd544d6ad5e2feca1674ad3fe"
