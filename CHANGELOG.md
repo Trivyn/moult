@@ -6,7 +6,7 @@ All notable changes to this crate are recorded here. The format follows
 Every release entry has a `Host storage compatibility` subsection. It is also
 copied into the annotated release-tag notes.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-17
 
 ### Added
 

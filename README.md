@@ -40,7 +40,7 @@ The resolution order is documented in the crate docs on
   the `Inflector` opts in with `guess_unknown(true)`.
 
 Every answer is deterministic and, for singulars, checked against the dictionary;
-guessing happens only when you ask for it. The crate has no dependencies, is
+guessing happens only if you opt-in. The crate has no dependencies, is
 `no_std` (with `alloc`), and compiles its word tables in, so there are no
 runtime files and no WordNet install.
 
