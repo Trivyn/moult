@@ -17,6 +17,9 @@
 //! assert_eq!(moult::singularize("ISBNs"), "ISBN");
 //! ```
 //!
+//! [`singularize_phrase`] and [`pluralize_phrase`] do the same for a noun
+//! phrase: they inflect its last word (see [Phrases](#phrases)).
+//!
 //! Both functions return a [`Cow`]: [`Cow::Borrowed`] with the input when the
 //! word comes back unchanged, so the common case allocates nothing.
 //! [`is_noun`] tells "unchanged because the dictionary knows it" from
@@ -31,8 +34,8 @@
 //! 0. **Overrides**: a plural given to an [`Inflector`] gives its singular;
 //!    an override singular or invariant word is unchanged.
 //! 1. **Not a word**: input of exactly one character ("s", "a", "I"), input
-//!    that contains whitespace, and input without a letter ("", "41") are
-//!    unchanged.
+//!    that contains whitespace (see [`singularize_phrase`]), and input without
+//!    a letter ("", "41") are unchanged.
 //! 2. **Acronym plural**: an all-caps stem of at least two characters (digits
 //!    allowed, at least one letter) followed by a lower-case `s`, or `es`
 //!    after a stem ending in S, X, Z, CH or SH, gives the stem ("IDs" →
@@ -89,9 +92,10 @@
 //!
 //! 0. **Overrides**: an override singular gives its plural; an override
 //!    plural or invariant word is unchanged.
-//! 1. **Not a word**, as in singularize: unchanged. So is a word that ends
-//!    in a character that is not a letter or digit ("dock,", "C++"), which
-//!    has no end to append a suffix to; "MP3" gives "MP3s".
+//! 1. **Not a word**, as in singularize: unchanged (see
+//!    [`pluralize_phrase`] for input that contains whitespace). So is a word
+//!    that ends in a character that is not a letter or digit ("dock,",
+//!    "C++"), which has no end to append a suffix to; "MP3" gives "MP3s".
 //! 2. **Invariant nouns**, unchanged.
 //! 3. **Already plural**, unchanged: an acronym plural ("IDs"); a word that
 //!    steps 3 to 8 of singularize reduce to a different word ("glasses",
@@ -125,6 +129,27 @@
 //!    `s`. A `-o` or `-f` noun takes a plain `s` unless WordNet lists an
 //!    `-oes` or `-ves` form.
 //!
+//! # Phrases
+//!
+//! [`singularize_phrase`] and [`pluralize_phrase`] find the last run of
+//! non-whitespace characters ([`char::is_whitespace`], so U+00A0 counts) and
+//! inflect it with the word function of the same [`Inflector`], so overrides,
+//! case handling and [`guess_unknown`](InflectorBuilder::guess_unknown) apply.
+//! The text before and after it is kept byte for byte. Input with no
+//! whitespace behaves exactly like the word function, and empty or
+//! all-whitespace input is unchanged. The result is [`Cow::Borrowed`] when it
+//! equals the input.
+//!
+//! ```
+//! assert_eq!(moult::singularize_phrase("order lines"), "order line");
+//! assert_eq!(moult::singularize_phrase("  Order Lines\n"), "  Order Line\n");
+//! assert_eq!(moult::pluralize_phrase("dry dock"), "dry docks");
+//! ```
+//!
+//! Only the last word changes, so a head-initial compound inflects the wrong
+//! word: "attorney general" gives "attorney generals", not "attorneys
+//! general".
+//!
 //! # Case
 //!
 //! Both directions keep the input's case pattern. The characters of the
@@ -140,9 +165,10 @@
 //! suffix ("OS" → "OSes", an override "SKU" → "SKUs"); an override plural of
 //! any other shape follows the word's case.
 //!
-//! The functions read a single word. Splitting a compound or an identifier
-//! ("OrderLines", "farm_workers") and inflecting its head is the caller's
-//! choice.
+//! [`singularize`] and [`pluralize`] read a single word; the phrase functions
+//! inflect the last word of a phrase. Splitting an identifier ("OrderLines",
+//! "farm_workers") and inflecting a head-initial compound's head ("attorney
+//! general") is the caller's job.
 //!
 //! [Open English WordNet]: https://en-word.net/
 
@@ -168,7 +194,9 @@ static DEFAULT: Inflector = Inflector::new();
 /// The singular form of the English noun `word`.
 ///
 /// Returns [`Cow::Borrowed`] with the input when the word is unchanged. The
-/// order of resolution is in the [crate documentation](crate).
+/// order of resolution is in the [crate documentation](crate). Input that
+/// contains whitespace is returned unchanged; use [`singularize_phrase`] for a
+/// phrase.
 ///
 /// ```
 /// assert_eq!(moult::singularize("Territories"), "Territory");
@@ -183,7 +211,8 @@ pub fn singularize(word: &str) -> Cow<'_, str> {
 ///
 /// Returns [`Cow::Borrowed`] with the input when the word is unchanged, which
 /// includes a word that already reads as a plural. The order of resolution is
-/// in the [crate documentation](crate).
+/// in the [crate documentation](crate). Input that contains whitespace is
+/// returned unchanged; use [`pluralize_phrase`] for a phrase.
 ///
 /// ```
 /// assert_eq!(moult::pluralize("quiz"), "quizzes");
@@ -193,11 +222,47 @@ pub fn pluralize(word: &str) -> Cow<'_, str> {
     DEFAULT.pluralize(word)
 }
 
+/// The singular form of the English noun phrase `phrase`: its last word is
+/// singularized and the rest is kept as it was.
+///
+/// The last word is the last run of non-whitespace characters; the text
+/// around it is kept byte for byte. Returns [`Cow::Borrowed`] with the input
+/// when the result equals it. A head-initial compound ("attorney general")
+/// inflects the wrong word, and splitting identifiers is the caller's job.
+/// See [Phrases](crate#phrases).
+///
+/// ```
+/// assert_eq!(moult::singularize_phrase("order lines"), "order line");
+/// assert_eq!(moult::singularize_phrase("Order Lines"), "Order Line");
+/// assert!(matches!(
+///     moult::singularize_phrase("order line"),
+///     std::borrow::Cow::Borrowed(_)
+/// ));
+/// ```
+pub fn singularize_phrase(phrase: &str) -> Cow<'_, str> {
+    DEFAULT.singularize_phrase(phrase)
+}
+
+/// The plural form of the English noun phrase `phrase`: its last word is
+/// pluralized and the rest is kept as it was.
+///
+/// Whitespace handling, the `Cow` contract and the head-initial limitation
+/// are those of [`singularize_phrase`].
+///
+/// ```
+/// assert_eq!(moult::pluralize_phrase("dry dock"), "dry docks");
+/// assert_eq!(moult::pluralize_phrase("  order line\n"), "  order lines\n");
+/// assert_eq!(moult::pluralize_phrase("attorney general"), "attorney generals");
+/// ```
+pub fn pluralize_phrase(phrase: &str) -> Cow<'_, str> {
+    DEFAULT.pluralize_phrase(phrase)
+}
+
 /// Whether `word` is a noun Open English WordNet knows: a noun or name in the
 /// word lists, or a word the invariant list, the irregular forms or the
 /// checked rules reduce to a noun. The opt-in unknown-word guess does not
 /// count, so `false` means [`pluralize`] is guessing and [`singularize`] leaves
-/// the word alone.
+/// the word alone. It is `false` for input that contains whitespace.
 ///
 /// ```
 /// assert!(moult::is_noun("mice"));

@@ -105,7 +105,9 @@ impl Inflector {
     /// The singular form of the English noun `word`.
     ///
     /// Returns [`Cow::Borrowed`] with the input when the word is unchanged.
-    /// The order of resolution is in the [crate documentation](crate).
+    /// The order of resolution is in the [crate documentation](crate). Input
+    /// that contains whitespace is returned unchanged; use
+    /// [`singularize_phrase`](Self::singularize_phrase) for a phrase.
     pub fn singularize<'a>(&self, word: &'a str) -> Cow<'a, str> {
         let low = Lower::new(word);
         let key = low.as_str();
@@ -136,7 +138,9 @@ impl Inflector {
     ///
     /// Returns [`Cow::Borrowed`] with the input when the word is unchanged,
     /// which includes a word that already reads as a plural. The order of
-    /// resolution is in the [crate documentation](crate).
+    /// resolution is in the [crate documentation](crate). Input that contains
+    /// whitespace is returned unchanged; use
+    /// [`pluralize_phrase`](Self::pluralize_phrase) for a phrase.
     pub fn pluralize<'a>(&self, word: &'a str) -> Cow<'a, str> {
         let low = Lower::new(word);
         let key = low.as_str();
@@ -164,12 +168,79 @@ impl Inflector {
         changed(word, key, &plural, origin)
     }
 
+    /// The singular form of the English noun phrase `phrase`: its last word
+    /// ([`singularize`](Self::singularize)) with the rest kept as it was.
+    ///
+    /// The last word is the last run of non-whitespace characters
+    /// ([`char::is_whitespace`]). The text before and after it, including
+    /// any leading or trailing whitespace, is kept byte for byte. Input with
+    /// no whitespace behaves exactly like `singularize`, and empty or
+    /// all-whitespace input is unchanged. Returns [`Cow::Borrowed`] with the
+    /// input when the result equals it.
+    ///
+    /// Head-initial compounds inflect the wrong word ("attorney general"
+    /// gives "attorney generals" when pluralized, not "attorneys general"),
+    /// and identifiers ("order_lines") are not split. Both are the caller's
+    /// job.
+    ///
+    /// ```
+    /// let inflector = moult::Inflector::builder().pair("sku", "skus").build().unwrap();
+    /// assert_eq!(inflector.singularize_phrase("blue SKUs"), "blue SKU");
+    /// assert_eq!(inflector.singularize_phrase("Order Lines\n"), "Order Line\n");
+    /// ```
+    pub fn singularize_phrase<'a>(&self, phrase: &'a str) -> Cow<'a, str> {
+        self.last_word(phrase, |word| self.singularize(word))
+    }
+
+    /// The plural form of the English noun phrase `phrase`: its last word
+    /// ([`pluralize`](Self::pluralize)) with the rest kept as it was.
+    ///
+    /// Whitespace handling, the `Cow` contract and the head-initial
+    /// limitation are those of
+    /// [`singularize_phrase`](Self::singularize_phrase).
+    ///
+    /// ```
+    /// let inflector = moult::Inflector::builder().pair("sku", "skus").build().unwrap();
+    /// assert_eq!(inflector.pluralize_phrase("blue sku"), "blue skus");
+    /// assert_eq!(inflector.pluralize_phrase("dry dock "), "dry docks ");
+    /// ```
+    pub fn pluralize_phrase<'a>(&self, phrase: &'a str) -> Cow<'a, str> {
+        self.last_word(phrase, |word| self.pluralize(word))
+    }
+
+    /// Applies `inflect` to the last run of non-whitespace characters of
+    /// `phrase` and keeps the rest. Borrowed exactly when `inflect` borrows.
+    fn last_word<'a>(
+        &self,
+        phrase: &'a str,
+        inflect: impl FnOnce(&'a str) -> Cow<'a, str>,
+    ) -> Cow<'a, str> {
+        let end = phrase.trim_end().len();
+        let start = phrase[..end].rfind(char::is_whitespace).map_or(0, |i| {
+            i + phrase[i..].chars().next().map_or(0, char::len_utf8)
+        });
+        if start == end {
+            return Cow::Borrowed(phrase);
+        }
+        match inflect(&phrase[start..end]) {
+            Cow::Borrowed(_) => Cow::Borrowed(phrase),
+            Cow::Owned(word) => {
+                let mut out = String::with_capacity(phrase.len() - (end - start) + word.len());
+                out.push_str(&phrase[..start]);
+                out.push_str(&word);
+                out.push_str(&phrase[end..]);
+                Cow::Owned(out)
+            }
+        }
+    }
+
     /// Whether `word` is a noun this inflector knows: an override word, a
     /// word in Open English WordNet's noun or name lists, or a word that
     /// the overrides, the invariant list, the irregular forms or the checked
     /// rules reduce to a WordNet noun. The unknown-word fallback does not
     /// count, whether or not [`guess_unknown`](InflectorBuilder::guess_unknown)
     /// is on, so `false` means the answer is a guess or the word is left alone.
+    /// It is `false` for input that contains whitespace.
     pub fn is_noun(&self, word: &str) -> bool {
         let low = Lower::new(word);
         let key = low.as_str();
@@ -237,7 +308,10 @@ impl InflectorBuilder {
 
     /// Lets singularize guess the singular of a word that no
     /// dictionary-checked step resolves. Off by default: such a word comes
-    /// back unchanged.
+    /// back unchanged. A capitalised word is never guessed ("Transitlines" and
+    /// "TransitLines" stay unchanged, which keeps "Kubernetes" and "Athens"
+    /// safe); to have one guessed, lower-case it first and accept lower-case
+    /// output.
     ///
     /// With this on, an unknown word of at least four lower-case ASCII
     /// letters takes a few conservative suffix rules, accepted only when the

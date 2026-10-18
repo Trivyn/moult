@@ -22,7 +22,11 @@ docs in `src/lib.rs` define the resolution order — keep them and the code in s
    derived.
 5. **Case is kept.** Lookup is case-insensitive; output keeps the input's case pattern
    (acronyms stay upper case, capitalised words stay capitalised).
-6. **One word in, one word out.** Splitting compounds or identifiers is the caller's job.
+6. **One word in, one word out.** `singularize`, `pluralize` and `is_noun` take one word;
+   input containing whitespace is returned unchanged. `singularize_phrase` and
+   `pluralize_phrase` inflect only the final whitespace-separated word and keep the rest
+   byte-for-byte. Splitting identifiers (camelCase, snake_case) and choosing the head of a
+   head-initial compound ("attorney general") stay the caller's job.
 7. **Consumer-neutral.** This is a public crate: no references to specific downstream
    projects in code, docs, or tests.
 

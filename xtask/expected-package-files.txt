@@ -19,4 +19,5 @@ src/table_tests.rs
 tests/cases.rs
 tests/guess.rs
 tests/overrides.rs
+tests/phrase.rs
 tests/robustness.rs

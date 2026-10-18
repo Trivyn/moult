@@ -6,12 +6,25 @@ All notable changes to this crate are recorded here. The format follows
 Every release entry has a `Host storage compatibility` subsection. It is also
 copied into the annotated release-tag notes.
 
-## [Unreleased]
+## [0.2.0] - 2026-10-17
 
 ### Added
 
+- `singularize_phrase` and `pluralize_phrase`, as free functions and as
+  `Inflector` methods. They inflect the last whitespace-separated word of a
+  noun phrase with the matching word function (same overrides, case handling
+  and `guess_unknown` setting) and keep the rest byte for byte ("Order Lines"
+  → "Order Line", "dry dock" → "dry docks"). Head-initial compounds
+  ("attorney general") and identifier splitting stay the caller's job.
+  ([#2](https://github.com/Trivyn/moult/issues/2))
 - `S_REGULAR` in `src/policy.rs`: the closed list of nouns shaped like a
   plural that still take `-es` ("lens", "summons", "yes").
+
+### Changed
+
+- The docs of `singularize`, `pluralize` and `is_noun` say that input
+  containing whitespace is returned unchanged (`is_noun`: `false`), and the
+  `guess_unknown` docs say that capitalised words are never guessed.
 
 ### Fixed
 
@@ -24,25 +37,28 @@ copied into the annotated release-tag notes.
   ([#1](https://github.com/Trivyn/moult/issues/1))
 - `pluralize` no longer appends a suffix after trailing punctuation: a word
   that ends in a character that is not a letter or digit is unchanged
-  ("dock," was "dock,s", "C++" was "C++s").
+  ("dock," was "dock,s", "C++" was "C++s"), and so is the last word of
+  `pluralize_phrase("dry dock,")`.
 
 ### Host storage compatibility
 
 - Change: `pluralize` output changes for the 418 plural-shaped WordNet noun
   lemmas described under Fixed. Nearly all of the 0.1.0 outputs for them were
   non-words ("thankses"); the exception is "triceratops", whose
-  "triceratopses" was a valid plural. The input is now returned unchanged.
+  "triceratopses" was a valid plural. 0.2.0 returns the input unchanged.
   `cargo xtask report` lists the class ("plural-shaped noun lemmas left
   unchanged by pluralize").
 - Change: `pluralize` output changes for a word that ends in a character that
   is not a letter or digit ("dock," to "dock,s" in 0.1.0). Those 0.1.0 outputs
-  were non-words; the input is now returned unchanged.
+  were non-words; 0.2.0 returns the input unchanged. Host-visible.
 - Affected seam: the canonical lexical forms returned by `pluralize` (and
   `Inflector::pluralize`). Host-visible output, not storage-internal.
   `singularize`, `is_noun` and the `guess_unknown` fallback are unchanged.
 - Migration: none for hosts that persist singular forms. A host that persisted
   `pluralize` output from 0.1.0 should re-derive plurals for stored words, or
   map the old `-eses`/`-ses` non-words back to their input.
+- The new phrase functions add no new canonical forms: a phrase's result is
+  its last word's word-function result, with the rest unchanged.
 
 ## [0.1.0] - 2026-10-17
 

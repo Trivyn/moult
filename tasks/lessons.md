@@ -21,3 +21,11 @@ Mirror of MOOSEDev Lesson records (the graph is canonical).
   Recognise the loop after the second round of the same class, and put the choice to the user.
 - **Origin:** user correction, moult 0.1 review round 4 (afterhours → afterhour). The fallback
   became opt-in (`Inflector::builder().guess_unknown(true)`).
+
+## Background CLI runs need closed stdin, and a liveness check
+- **Pattern:** `codex exec "<prompt>"` launched as a background job with stdin left open printed
+  "Reading additional input from stdin..." and waited for hours; nothing checked it was making
+  progress, so the user had to ask.
+- **Rule:** run non-interactive CLIs in the background with `< /dev/null`, and check the output
+  shows real progress shortly after launch instead of only waiting for the exit notification.
+- **Origin:** user correction, moult 0.2.0 review round 1 ("are they done, it's been hours").

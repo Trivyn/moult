@@ -324,3 +324,40 @@ Deviations from the plan above, each recorded in MOOSEDev:
 - LEMMA_TO_PLURAL is a u16 index into FORM_TO_LEMMA; xtask's moult dependency is behind the
   `inflect` feature so the generator never depends on its own output.
 - Size: +0.61 MB release binary delta (target was ≤ 0.6 MB); clean build 0.3 s; .crate 230 KB.
+
+---
+
+## 0.2.0: GitHub issues #1 and #2 (ratified 2026-10-17)
+
+MOOSEDev: P8 (2a19ead0…), D9 (5f94288a…), Constraint 8a614569… (supersedes 2b52d3f5…).
+
+### Issue 1: plural-shaped noun lemmas (P8)
+- [x] `rules.rs`: shared shape predicate: ends in `s` after anything but a/i/o/u/y, not `ss`,
+      not a `-sis` word.
+- [x] `policy.rs`: `S_REGULAR` = lens, summons, yes (sorted, reason comments).
+- [x] `resolve::reads_as_plural`: a `Sing::Keep` noun of that shape, with no WordNet plural form,
+      no IRREGULAR/PLURAL_CHOICE entry and not on `S_REGULAR`, is already plural.
+- [x] xtask: validate `S_REGULAR` (lower-case noun, plural shape, not stale); `report` prints the
+      class size.
+- [x] Tests: `cases.rs` rows (thanks, clothes, earnings, geophysics, 1990s; lens→lenses,
+      summons→summonses, yes→yeses, glans→glandes); full-table test in `table_tests.rs`.
+- [x] Crate docs (pluralize step 3), NLTK `--check` still passes or expected.tsv re-derived.
+
+### Issue 2: phrase entry points (D9)
+- [x] `singularize_phrase` / `pluralize_phrase`: free functions and `Inflector` methods; inflect
+      the last non-whitespace run, keep the rest byte-for-byte, Borrowed iff unchanged.
+- [x] Docs: whitespace input unchanged on the word functions and `is_noun`; capitalised words
+      never guessed (guess_unknown); README section; crate docs' closing paragraph.
+- [x] `tests/phrase.rs`.
+- [x] CLAUDE.md invariant 6 matches the new Constraint.
+
+### Release
+- [x] Version 0.2.0, CHANGELOG with Host storage compatibility (pluralize changes for 418
+      lemmas), codex review rounds 1–3 (no showstopper left).
+- [ ] Commit, tag, push and publish only when asked.
+
+Review fixes: round 1: pluralize leaves a word ending in a non-alphanumeric character
+unchanged ("dock," was "dock,s"); S_REGULAR vs SINGULAR_CHOICE conflict rejected; report
+membership follows the full singular order; docs say "nearly all" old outputs were non-words.
+Round 2: S_REGULAR entries singularize reduces are rejected. Round 3: collins (Tom Collins)
+stays unchanged instead of collinses: declined as within P8's accepted trade-off.
