@@ -18,7 +18,7 @@ plural from the word itself, as a plural is not a lemma). Irregular forms
 contain comes back unchanged from `singularize`, unless you opt in to a
 conservative guess (see [Unknown words](#unknown-words)).
 
-Both functions return a `Cow<'_, str>`, borrowed when the word comes back
+All of them return a `Cow<'_, str>`, borrowed when the word comes back
 unchanged, so the common case allocates nothing.
 
 ## How it decides
@@ -40,7 +40,7 @@ The resolution order is documented in the crate docs on
   the `Inflector` opts in with `guess_unknown(true)`.
 
 Every answer is deterministic and, for singulars, checked against the dictionary;
-guessing happens only if you opt-in. The crate has no dependencies, is
+guessing happens only if you opt in. The crate has no dependencies, is
 `no_std` (with `alloc`), and compiles its word tables in, so there are no
 runtime files and no WordNet install.
 
@@ -116,10 +116,25 @@ assert!(moult::is_noun("gas"));
 assert!(!moult::is_noun("zorbit"));
 ```
 
-## One word in, one word out
+## Phrases
 
-The functions read a single word. Splitting a compound or an identifier
-("OrderLines", "farm_workers") and inflecting its head is the caller's job.
+`singularize` and `pluralize` read one word: input that contains whitespace is
+returned unchanged, and `is_noun` is `false` for it. For a noun phrase, use
+`singularize_phrase` and `pluralize_phrase`. They inflect the last word with
+the matching word function (so overrides, case handling and `guess_unknown`
+apply) and keep the rest of the text byte for byte:
+
+```rust
+assert_eq!(moult::singularize_phrase("order lines"), "order line");
+assert_eq!(moult::singularize_phrase("Order Lines"), "Order Line");
+assert_eq!(moult::pluralize_phrase("dry dock"), "dry docks");
+assert_eq!(moult::pluralize_phrase("  dry dock\n"), "  dry docks\n");
+```
+
+Only the last word changes, so a head-initial compound inflects the wrong
+word: "attorney general" gives "attorney generals", not "attorneys general".
+Splitting an identifier ("OrderLines", "farm_workers") and inflecting a
+compound's head is the caller's job.
 
 ## Cost
 
