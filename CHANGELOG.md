@@ -6,6 +6,44 @@ All notable changes to this crate are recorded here. The format follows
 Every release entry has a `Host storage compatibility` subsection. It is also
 copied into the annotated release-tag notes.
 
+## [Unreleased]
+
+### Added
+
+- `S_REGULAR` in `src/policy.rs`: the closed list of nouns shaped like a
+  plural that still take `-es` ("lens", "summons", "yes").
+
+### Fixed
+
+- `pluralize` no longer adds `-es` to a WordNet noun that is already plural.
+  A noun that `singularize` keeps, that ends in `s` after a consonant, `e`, a
+  digit or an apostrophe, and that has no listed plural, is now left
+  unchanged: "thanks", "clothes", "earnings", "geophysics", "1990s" (were
+  "thankses", "clotheses", …). Nearly all of these nouns are plural-only.
+  418 plural-shaped WordNet lemmas are affected.
+  ([#1](https://github.com/Trivyn/moult/issues/1))
+- `pluralize` no longer appends a suffix after trailing punctuation: a word
+  that ends in a character that is not a letter or digit is unchanged
+  ("dock," was "dock,s", "C++" was "C++s").
+
+### Host storage compatibility
+
+- Change: `pluralize` output changes for the 418 plural-shaped WordNet noun
+  lemmas described under Fixed. Nearly all of the 0.1.0 outputs for them were
+  non-words ("thankses"); the exception is "triceratops", whose
+  "triceratopses" was a valid plural. The input is now returned unchanged.
+  `cargo xtask report` lists the class ("plural-shaped noun lemmas left
+  unchanged by pluralize").
+- Change: `pluralize` output changes for a word that ends in a character that
+  is not a letter or digit ("dock," to "dock,s" in 0.1.0). Those 0.1.0 outputs
+  were non-words; the input is now returned unchanged.
+- Affected seam: the canonical lexical forms returned by `pluralize` (and
+  `Inflector::pluralize`). Host-visible output, not storage-internal.
+  `singularize`, `is_noun` and the `guess_unknown` fallback are unchanged.
+- Migration: none for hosts that persist singular forms. A host that persisted
+  `pluralize` output from 0.1.0 should re-derive plurals for stored words, or
+  map the old `-eses`/`-ses` non-words back to their input.
+
 ## [0.1.0] - 2026-10-17
 
 ### Added

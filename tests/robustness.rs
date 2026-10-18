@@ -210,3 +210,39 @@ fn length_changing_lower_casing_keeps_case() {
     assert_eq!(plur("ΟΔΟΣ"), "ΟΔΟΣs");
     assert_eq!(plur("STRAẞE"), "STRAẞEs");
 }
+
+#[test]
+fn pluralize_leaves_a_word_ending_in_punctuation_alone() {
+    for w in ["dock,", "C++", "cat.", "dock-", "dock)", "dock'", "dock."] {
+        assert!(
+            matches!(moult::pluralize(w), Cow::Borrowed(s) if s == w),
+            "{w}"
+        );
+    }
+    // A digit is a character a suffix can follow.
+    assert_eq!(plur("MP3"), "MP3s");
+    assert_eq!(plur("men's"), "men's");
+    // Overrides come first, so an override may name a word with punctuation.
+    let inflector = moult::Inflector::builder()
+        .pair("c++", "c++s")
+        .build()
+        .unwrap();
+    assert_eq!(inflector.pluralize("c++"), "c++s");
+    assert_eq!(inflector.pluralize("dock,"), "dock,");
+}
+
+#[test]
+fn singularize_leaves_a_word_ending_in_punctuation_alone() {
+    for guess in [false, true] {
+        let inflector = moult::Inflector::builder()
+            .guess_unknown(guess)
+            .build()
+            .unwrap();
+        for w in ["docks,", "docks.", "C++", "zorbs,", "gizmos)"] {
+            assert!(
+                matches!(inflector.singularize(w), Cow::Borrowed(s) if s == w),
+                "{w} guess={guess}"
+            );
+        }
+    }
+}

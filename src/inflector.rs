@@ -150,7 +150,14 @@ impl Inflector {
             Some(Over::Keep) => return Cow::Borrowed(word),
             None => {}
         }
-        if key.is_empty() || is_inert(word) || is_invariant(key) || reads_as_plural(word, key) {
+        // A word that ends in punctuation ("dock,", "C++") has no end to
+        // append a suffix to.
+        if key.is_empty()
+            || is_inert(word)
+            || !word.ends_with(char::is_alphanumeric)
+            || is_invariant(key)
+            || reads_as_plural(word, key)
+        {
             return Cow::Borrowed(word);
         }
         let (plural, origin) = plural(key);

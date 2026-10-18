@@ -85,6 +85,12 @@ pub fn render(manifest: &Manifest, wn: &Wordnet, an: &Analysis) -> String {
         an.d_doubling.len()
     );
 
+    let _ = writeln!(
+        w,
+        "plural-shaped noun lemmas left unchanged by pluralize: {}",
+        an.plural_only.len()
+    );
+
     let _ = writeln!(w, "\n== samples ==");
     sample(w, "class A", &an.a, |(i, s)| format!("{i} -> {s}"));
     sample(
@@ -102,6 +108,9 @@ pub fn render(manifest: &Manifest, wn: &Wordnet, an: &Analysis) -> String {
             format!("{x}: {} instead of {}", show(with), show(without))
         },
     );
+    sample(w, "plural-shaped, unchanged", &an.plural_only, |x| {
+        x.clone()
+    });
     let _ = writeln!(w, "  class D(b) entries: {}", an.d_doubling.join(" "));
 
     let _ = writeln!(w, "\n== unclassified (paste into src/policy.rs) ==");

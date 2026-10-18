@@ -89,7 +89,9 @@
 //!
 //! 0. **Overrides**: an override singular gives its plural; an override
 //!    plural or invariant word is unchanged.
-//! 1. **Not a word**, as in singularize: unchanged.
+//! 1. **Not a word**, as in singularize: unchanged. So is a word that ends
+//!    in a character that is not a letter or digit ("dock,", "C++"), which
+//!    has no end to append a suffix to; "MP3" gives "MP3s".
 //! 2. **Invariant nouns**, unchanged.
 //! 3. **Already plural**, unchanged: an acronym plural ("IDs"); a word that
 //!    steps 3 to 8 of singularize reduce to a different word ("glasses",
@@ -99,6 +101,15 @@
 //!    of at least five characters. That holds for every such word, including
 //!    one the opt-in unknown-word guess of singularize refuses to strip, and
 //!    whether or not that guess is on. It stops "glasses" becoming "glasseses".
+//!    A WordNet noun is also unchanged when singularize keeps it, it ends in
+//!    `s` but not `ss` after a consonant, `e`, a digit or an apostrophe (not
+//!    after `a`, `i`, `o`, `u` or `y`, which end real singulars such as "bus"
+//!    and "iris"), it is not a `-sis` word of at least five characters, and
+//!    no list or WordNet form gives it a plural ("thanks", "clothes",
+//!    "earnings", "1990s"). Nearly all are plural-only nouns, and `es`
+//!    would invent a non-word. A closed list holds the real singulars of that
+//!    shape, which take the regular plural ("lens" → "lenses", "summons" →
+//!    "summonses", "yes" → "yeses").
 //! 4. **Irregular forms**, in this order: the supplement ("person" →
 //!    "people"); the curated choices ("brother" → "brothers", "stadium" →
 //!    "stadiums", "gas" → "gases"); and WordNet's form list minus the

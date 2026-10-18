@@ -40,6 +40,25 @@ pub(crate) fn is_sis_word(lemma: &str) -> bool {
     lemma.len() >= MIN_SIS_LEN && lemma.ends_with("sis")
 }
 
+/// Whether `key` ends in `s` but not `ss`, and is not a `-sis` word the plural
+/// rules handle.
+pub(crate) fn ends_in_bare_s(key: &str) -> bool {
+    key.ends_with('s') && !key.ends_with("ss") && !is_sis_word(key)
+}
+
+/// Whether `key` has the shape of a plural noun: it ends in a bare `s` (see
+/// [`ends_in_bare_s`]) after at least one character, anything but `a`, `i`, `o`, `u` or `y`. The
+/// excluded endings are the Latin and Greek singulars of "bus", "status",
+/// "iris", "canvas" and "-itis"; after a consonant, `e`, a digit or an
+/// apostrophe the `s` is nearly always a plural ending ("thanks", "clothes",
+/// "1990s").
+pub(crate) fn has_plural_shape(key: &str) -> bool {
+    ends_in_bare_s(key)
+        && key
+            .strip_suffix('s')
+            .is_some_and(|stem| !stem.is_empty() && !stem.ends_with(['a', 'i', 'o', 'u', 'y']))
+}
+
 /// The plural of `lemma` when no list and no WordNet form decides it, in rule
 /// order:
 ///

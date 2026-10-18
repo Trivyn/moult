@@ -203,7 +203,6 @@ const PLURAL_READS_AS_SIBLING: &[&str] = &[
     "prothalamium",
     "punky",
     "quicky",
-    "revers",
     "revery",
     "roomy",
     "sharpy",
@@ -347,6 +346,7 @@ fn policy_lists_are_sorted_without_duplicate_keys() {
     assert!(is_strictly_sorted(policy::INVARIANT));
     assert!(is_strictly_sorted(policy::MAN_REGULAR));
     assert!(is_strictly_sorted(policy::CH_REGULAR));
+    assert!(is_strictly_sorted(policy::S_REGULAR));
     assert!(is_strictly_sorted(policy::EXCLUDED_FORMS));
     assert!(is_strictly_sorted(policy::SINGULAR_CHOICE));
     assert!(is_strictly_sorted(policy::PLURAL_CHOICE));
@@ -403,5 +403,54 @@ fn others_table_is_well_formed() {
             assert_eq!(pluralize(&sing), *w, "{w} -> {sing} is not its plural");
         }
         assert_eq!(pluralize(w), *w, "{w} changed by pluralize");
+    }
+}
+
+/// Whether WordNet, IRREGULAR or PLURAL_CHOICE lists a plural for `lemma`.
+fn has_listed_plural(lemma: &str) -> bool {
+    policy::IRREGULAR.iter().any(|&(s, _)| s == lemma)
+        || policy::PLURAL_CHOICE
+            .binary_search_by(|&(k, _)| k.cmp(lemma))
+            .is_ok()
+        || crate::lookup::rows_by_lemma(lemma)
+            .any(|(form, l)| policy::EXCLUDED_FORMS.binary_search(&(l, form)).is_err())
+}
+
+#[test]
+fn pluralize_leaves_plural_shaped_nouns_alone() {
+    let (mut kept, mut s_regular) = (0, 0);
+    let mut vowel_changed = 0;
+    for l in nouns() {
+        if singularize(l) != l || is_invariant(l) {
+            continue;
+        }
+        let plural = pluralize(l);
+        if !crate::rules::has_plural_shape(l) {
+            // The vowel + s singulars ("bus", "status", "iris") keep their -es.
+            let vowel_s = l.ends_with('s') && l[..l.len() - 1].ends_with(['a', 'i', 'o', 'u', 'y']);
+            if vowel_s && plural != l {
+                vowel_changed += 1;
+            }
+            continue;
+        }
+        if policy::S_REGULAR.contains(&l) {
+            s_regular += 1;
+            assert_eq!(plural, crate::rules::regular_plural(l), "{l}");
+        } else if !has_listed_plural(l) {
+            kept += 1;
+            assert_eq!(plural, l, "{l} is plural-shaped with no plural");
+        }
+    }
+    assert_eq!(s_regular, policy::S_REGULAR.len());
+    // The same figure `cargo xtask report` prints for the plural-shaped
+    // lemmas pluralize leaves unchanged.
+    assert_eq!(kept, 418, "plural-only nouns");
+    // Guards the vowel + s singulars: the count is the 0.1.0 measurement.
+    assert!(
+        vowel_changed >= 1369,
+        "only {vowel_changed} vowel + s changed"
+    );
+    for (word, want) in [("bus", "buses"), ("status", "statuses"), ("iris", "irises")] {
+        assert_eq!(pluralize(word), want);
     }
 }
