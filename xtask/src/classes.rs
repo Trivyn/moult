@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::policy;
-use crate::rules::{checked_singular, plural};
+use crate::rules::{checked_singular, has_plural_shape, plural};
 use crate::wordnet::Wordnet;
 
 /// The policy lists the analysis consults.
@@ -16,6 +16,7 @@ pub struct Policy<'a> {
     pub excluded: &'a [(&'a str, &'a str)],
     pub man_regular: &'a [&'a str],
     pub ch_regular: &'a [&'a str],
+    pub s_regular: &'a [&'a str],
 }
 
 impl Policy<'static> {
@@ -28,6 +29,7 @@ impl Policy<'static> {
             excluded: policy::EXCLUDED_FORMS,
             man_regular: policy::MAN_REGULAR,
             ch_regular: policy::CH_REGULAR,
+            s_regular: policy::S_REGULAR,
         }
     }
 }
@@ -56,6 +58,37 @@ impl Policy<'_> {
         self.has_invariant(input)
             || self.singular_choice(input)
             || self.irregular.iter().any(|(_, p)| *p == input)
+    }
+
+    /// Whether singularize keeps the known noun `w`, by the runtime's order:
+    /// the invariant list, the irregular plurals, the singular choices, the
+    /// WordNet forms, and the checked rules; a noun none of them reduces is
+    /// kept.
+    fn keeps_noun(&self, wn: &Wordnet, w: &str) -> bool {
+        if self.has_invariant(w) {
+            return true;
+        }
+        if self.irregular.iter().any(|(_, p)| *p == w) {
+            return false;
+        }
+        if let Some((_, out)) = self.singular_choice.iter().find(|(k, _)| *k == w) {
+            return *out == w;
+        }
+        if let Some((_, lemma)) = wn
+            .forms
+            .iter()
+            .find(|(f, l)| f == w && !self.excluded.contains(&(l.as_str(), f.as_str())))
+        {
+            return lemma == w;
+        }
+        checked_singular(w, |x| wn.is_noun(x), |x| self.man_regular.contains(&x)).is_none()
+    }
+
+    /// Whether WordNet lists a plural form for `lemma` that is not excluded.
+    fn has_listed_form(&self, wn: &Wordnet, lemma: &str) -> bool {
+        wn.forms
+            .iter()
+            .any(|(f, l)| l == lemma && !self.excluded.contains(&(l.as_str(), f.as_str())))
     }
 
     fn settles_plural(&self, lemma: &str) -> bool {
@@ -112,6 +145,9 @@ pub struct Analysis {
     pub f_with_ves: usize,
     /// Class D lemmas whose only form is the doubled-consonant plural.
     pub d_doubling: Vec<String>,
+    /// Plural-shaped noun lemmas that singularize keeps and pluralize leaves
+    /// unchanged ("thanks", "clothes").
+    pub plural_only: Vec<String>,
     pub problems: Vec<String>,
 }
 
@@ -316,6 +352,21 @@ pub fn analyze(wn: &Wordnet, pol: &Policy) -> Analysis {
         }
     }
 
+    // Plural-shaped lemmas that nothing lists a plural for: pluralize leaves
+    // them as the plural they look like.
+    let plural_only: Vec<String> = wn
+        .nouns
+        .iter()
+        .filter(|w| {
+            has_plural_shape(w)
+                && !pol.s_regular.contains(&w.as_str())
+                && !pol.settles_plural(w)
+                && !pol.has_listed_form(wn, w)
+                && pol.keeps_noun(wn, w)
+        })
+        .cloned()
+        .collect();
+
     let mut an = Analysis {
         a,
         a_invariant,
@@ -329,6 +380,7 @@ pub fn analyze(wn: &Wordnet, pol: &Policy) -> Analysis {
         f_lemmas,
         f_with_ves,
         d_doubling,
+        plural_only,
         problems: Vec::new(),
     };
     an.problems = validate(wn, pol, &an);
@@ -449,6 +501,11 @@ fn validate(wn: &Wordnet, pol: &Policy, an: &Analysis) -> Vec<String> {
     sorted(
         "CH_REGULAR",
         is_sorted_unique(pol.ch_regular.iter()),
+        &mut out,
+    );
+    sorted(
+        "S_REGULAR",
+        is_sorted_unique(pol.s_regular.iter()),
         &mut out,
     );
     let has_form = |lemma: &str| wn.forms.iter().any(|(_, l)| l == lemma);
@@ -575,6 +632,25 @@ fn validate(wn: &Wordnet, pol: &Policy, an: &Analysis) -> Vec<String> {
             ));
         }
     }
+    for w in pol.s_regular {
+        if !(wn.is_noun(w) && has_plural_shape(w)) {
+            out.push(format!(
+                "S_REGULAR {w:?}: not a lower-case WordNet noun of the plural shape"
+            ));
+        } else if pol.singular_choice(w) {
+            out.push(format!(
+                "S_REGULAR {w:?}: conflicts with SINGULAR_CHOICE, which settles the singular"
+            ));
+        } else if !pol.keeps_noun(wn, w) {
+            out.push(format!(
+                "S_REGULAR {w:?}: stale, singularize reduces it, so pluralize never reaches it"
+            ));
+        } else if pol.has_listed_form(wn, w) || pol.settles_plural(w) {
+            out.push(format!(
+                "S_REGULAR {w:?}: stale, a WordNet form or another list settles the plural"
+            ));
+        }
+    }
     for (lemma, form) in pol.excluded {
         if !wn.forms.contains(&(form.to_string(), lemma.to_string())) {
             out.push(format!(
@@ -621,6 +697,7 @@ mod tests {
             excluded: &[],
             man_regular: &[],
             ch_regular: &[],
+            s_regular: &[],
         }
     }
 
@@ -759,6 +836,54 @@ mod tests {
         assert!(p.iter().any(|x| x.contains("MAN_REGULAR \"cry\"")));
         assert!(p.iter().any(|x| x.contains("MAN_REGULAR \"shaman\"")));
         assert!(!p.iter().any(|x| x.contains("MAN_REGULAR \"man\"")));
+    }
+
+    #[test]
+    fn s_regular_needs_a_plural_shaped_noun_without_a_form() {
+        let mut wn = wordnet();
+        for n in ["lens", "thanks", "bus", "mice"] {
+            wn.nouns.insert(n.into());
+        }
+        wn.forms.insert(("lenses".into(), "lens".into()));
+        let pol = Policy {
+            s_regular: &["bus", "lens", "mice", "thanks"],
+            ..no_policy()
+        };
+        let p = problems(&wn, &pol);
+        // A vowel before the s is not the plural shape; "mice" is no s-word.
+        assert!(p.iter().any(|x| x.contains("S_REGULAR \"bus\": not")));
+        assert!(p.iter().any(|x| x.contains("S_REGULAR \"mice\": not")));
+        // A WordNet form already settles "lens"; "thanks" has none.
+        assert!(p.iter().any(|x| x.contains("S_REGULAR \"lens\": stale")));
+        assert!(!p.iter().any(|x| x.contains("S_REGULAR \"thanks\"")));
+        // A SINGULAR_CHOICE may not also claim the word.
+        let mut wn2 = wordnet();
+        wn2.nouns.insert("auspices".into());
+        let clash = Policy {
+            s_regular: &["auspices"],
+            singular_choice: &[("auspices", "auspices")],
+            ..no_policy()
+        };
+        let p = problems(&wn2, &clash);
+        assert!(p
+            .iter()
+            .any(|x| x.contains("S_REGULAR \"auspices\": conflicts")));
+        // An entry singularize reduces ("glasses" to "glass") is stale.
+        let mut wn3 = wordnet();
+        for n in ["glass", "glasses"] {
+            wn3.nouns.insert(n.into());
+        }
+        let reduced = Policy {
+            s_regular: &["glasses"],
+            ..no_policy()
+        };
+        let p = problems(&wn3, &reduced);
+        assert!(p
+            .iter()
+            .any(|x| x.contains("S_REGULAR \"glasses\": stale, singularize")));
+        // Without the entry, "thanks" is a plural-only noun.
+        let an = analyze(&wn, &no_policy());
+        assert_eq!(an.plural_only, ["thanks"]);
     }
 
     #[test]
@@ -929,6 +1054,7 @@ mod tests {
             excluded: &[("cry", "cryings"), ("cry", "crying")],
             man_regular: &["shaman", "human"],
             ch_regular: &["stomach", "monarch"],
+            s_regular: &["yes", "lens"],
         };
         let p = problems(&wn, &pol);
         for list in [
@@ -939,6 +1065,7 @@ mod tests {
             "EXCLUDED_FORMS",
             "MAN_REGULAR",
             "CH_REGULAR",
+            "S_REGULAR",
         ] {
             assert!(
                 p.iter()

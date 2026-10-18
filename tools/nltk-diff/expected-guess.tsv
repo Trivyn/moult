@@ -1,6 +1,5 @@
 # dict-sha256: be41ad97963bf8dabedd5871d5d691596175269d540956b0f9965a885c2bbab9
 word	moult	nltk	bucket
-a.m.s	a.m.	a.m.s	data-version
 aas	aas	aa	names
 abantes	abante	abantes	fallback-s-after-e
 abbacomes	abbacome	abbacomes	fallback-s-after-e
@@ -275,7 +274,6 @@ bikers	biker	bikers	data-version
 bilharziases	bilharziasis	bilharziases	extra-rule
 bimotors	bimotor	bimotors	fallback-s
 bio-fertilizers	bio-fertilizer	bio-fertilizers	data-version
-biodynamicses	biodynamics	biodynamicses	data-version
 biogeneses	biogenesis	biogeneses	extra-rule
 biographisms	biographism	biographisms	data-version
 biosyntheses	biosynthesis	biosyntheses	extra-rule
@@ -393,7 +391,6 @@ ceratites	ceratite	ceratites	fallback-s-after-e
 cercariiae	cercariiae	cercaria	nltk-exception-only
 cerebrosides	cerebroside	cerebrosides	data-version
 cerographies	cerography	cerographies	data-version
-ceroplasticses	ceroplastics	ceroplasticses	data-version
 chalcites	chalcite	chalcites	fallback-s-after-e
 chamarres	chamarre	chamarres	data-version
 chankings	chanking	chankings	fallback-s
@@ -547,7 +544,6 @@ cytokineses	cytokinesis	cytokineses	extra-rule
 cytolyses	cytolysis	cytolyses	extra-rule
 czardases	czardas	czardases	data-version
 czworniaks	czworniak	czworniaks	data-version
-d.j.s	d.j.	d.j.s	data-version
 dabbings	dabbing	dabbings	data-version
 dairywomen	dairywoman	dairywomen	extra-rule
 daktyloses	daktylos	daktyloses	data-version
@@ -563,7 +559,6 @@ decentrations	decentration	decentrations	data-version
 decibans	deciban	decibans	data-version
 decrementations	decrementation	decrementations	data-version
 definabilities	definability	definabilities	data-version
-definitorses	definitors	definitorses	data-version
 degrases	degras	degrases	data-version
 degreasers	degreaser	degreasers	data-version
 dehumidifiers	dehumidifier	dehumidifiers	data-version
@@ -733,7 +728,6 @@ ers	ers	er	min-stem
 erythroblastoses	erythroblastosis	erythroblastoses	extra-rule
 erythropoieses	erythropoiesis	erythropoieses	extra-rule
 es	es	e	names
-esportses	esports	esportses	data-version
 ess	ess	es	min-stem
 estheses	esthesis	estheses	extra-rule
 esthesiologies	esthesiology	esthesiologies	data-version
@@ -812,7 +806,6 @@ fivestones	fivestone	fivestones	fallback-s-after-e
 flatwoods	flatwood	flatwoods	fallback-s
 fleetings	fleeting	fleetings	fallback-s
 fleroviums	flerovium	fleroviums	data-version
-flewses	flews	flewses	data-version
 flexitarianisms	flexitarianism	flexitarianisms	data-version
 flightlessnesses	flightlessness	flightlessnesses	data-version
 flipagrams	flipagram	flipagrams	data-version
@@ -1205,7 +1198,6 @@ kinestheses	kinesthesis	kinestheses	extra-rule
 kinetoses	kinetosis	kinetoses	extra-rule
 kis	kis	ki	min-stem
 kiwanos	kiwano	kiwanos	data-version
-km/ses	km/s	km/ses	data-version
 kms	kms	km	min-stem
 knobkerries	knobkerrie	knobkerry	policy-choice
 konimeters	konimeter	konimeters	data-version
@@ -1342,7 +1334,6 @@ megawatt-hours	megawatt-hour	megawatt-hours	data-version
 melanoses	melanosis	melanoses	extra-rule
 mellitates	mellitate	mellitates	data-version
 meltabilities	meltability	meltabilities	data-version
-memeticses	memetics	memeticses	data-version
 memoranda	memorandum	memoranda	policy-choice
 men	man	men	policy-choice
 mentees	mentee	mentees	data-version
@@ -1594,7 +1585,6 @@ overwages	overwage	overwages	fallback-s-after-e
 overwatches	overwatch	overwatches	data-version
 overzealousnesses	overzealousness	overzealousnesses	data-version
 overzeals	overzeal	overzeals	data-version
-p.m.s	p.m.	p.m.s	data-version
 pachons	pachon	pachons	fallback-s
 packwomen	packwoman	packwomen	extra-rule
 paczkis	paczki	paczkis	data-version
@@ -1629,7 +1619,6 @@ passworts	passwort	passworts	fallback-s
 pasteurelloses	pasteurellosis	pasteurelloses	extra-rule
 pasteurisers	pasteuriser	pasteurisers	data-version
 pasteurizers	pasteurizer	pasteurizers	data-version
-pataphysicses	pataphysics	pataphysicses	data-version
 pathogeneses	pathogenesis	pathogeneses	extra-rule
 patriciates	patriciate	patriciates	data-version
 patrolwomen	patrolwoman	patrolwomen	extra-rule
@@ -1757,7 +1746,6 @@ preventivenesses	preventiveness	preventivenesses	data-version
 primordialities	primordiality	primordialities	data-version
 principes	principes	principe	fallback-other
 printworks	printwork	printworks	fallback-s
-problematicses	problematics	problematicses	data-version
 proceres	procere	proceres	fallback-s-after-e
 proclitics	proclitic	proclitics	data-version
 programmabilities	programmability	programmabilities	data-version
@@ -1790,7 +1778,6 @@ psittacoses	psittacosis	psittacoses	extra-rule
 psoriases	psoriasis	psoriases	extra-rule
 psychoanalyses	psychoanalysis	psychoanalyses	extra-rule
 psychogeneses	psychogenesis	psychogeneses	extra-rule
-psychographicses	psychographics	psychographicses	data-version
 psychokineses	psychokinesis	psychokineses	extra-rule
 psychomachies	psychomachy	psychomachies	data-version
 punchlines	punchline	punchlines	data-version
@@ -1887,7 +1874,6 @@ salicins	salicin	salicins	data-version
 saligenins	saligenin	saligenins	data-version
 sallenders	sallender	sallenders	fallback-s
 salmonelloses	salmonellosis	salmonelloses	extra-rule
-salopetteses	salopettes	salopetteses	data-version
 salpiglosses	salpiglossis	salpiglosses	extra-rule
 salt-workings	salt-working	salt-workings	data-version
 samen	samen	saman	nltk-exception-only

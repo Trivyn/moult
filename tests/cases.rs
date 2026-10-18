@@ -199,6 +199,21 @@ const PLURAL: &[(&str, &str)] = &[
     ("gas", "gases"),
     ("genus", "genera"),
     ("brother", "brothers"),
+    // Plural-only nouns are unchanged, in any case; the real singulars of that
+    // shape take es, and a WordNet form still wins.
+    ("thanks", "thanks"),
+    ("Thanks", "Thanks"),
+    ("clothes", "clothes"),
+    ("earnings", "earnings"),
+    ("geophysics", "geophysics"),
+    ("1990s", "1990s"),
+    ("measles", "measles"),
+    ("avionics", "avionics"),
+    ("lens", "lenses"),
+    ("summons", "summonses"),
+    ("yes", "yeses"),
+    ("glans", "glandes"),
+    ("cyclops", "cyclopes"),
     // WordNet lists another noun's plural against these lemmas.
     ("diva", "divas"),
     ("sol", "sols"),

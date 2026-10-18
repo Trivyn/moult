@@ -31,11 +31,11 @@ section lists the same buckets plus the `fallback-*` ones.
 | source | words |
 |---|---|
 | src/nouns.txt | 44543 |
-| moult plural of each noun (unique) | 43967 |
+| moult plural of each noun (unique) | 43966 |
 | FORM_TO_LEMMA forms | 1355 |
 | /usr/share/dict/words, lower-cased (sha256 `be41ad97963bf8dabedd5871d5d691596175269d540956b0f9965a885c2bbab9`) | 234456 |
-| union | 287755 |
-| union, lower-case words compared | 287755 |
+| union | 287329 |
+| union, lower-case words compared | 287329 |
 
 The committed expected.tsv and expected-guess.tsv were produced on macOS's `/usr/share/dict/words` (sha256 `be41ad97963bf8dabedd5871d5d691596175269d540956b0f9965a885c2bbab9`). `--check` refuses, with a message, when that file is absent or its hash differs, rather than comparing a different word set.
 
@@ -43,7 +43,7 @@ The committed expected.tsv and expected-guess.tsv were produced on macOS's `/usr
 
 The default mode is the guarantee: `singularize` never guesses, so a word that no dictionary-checked step resolves is unchanged. The `fallback-*` buckets can then hold only rows where NLTK moves a word moult leaves alone.
 
-NLTK 3.9.2, WordNet 3.0. Agreement: 285730 / 287755 = 99.30%. Disagreements: 2025.
+NLTK 3.9.2, WordNet 3.0. Agreement: 285319 / 287329 = 99.30%. Disagreements: 2010.
 
 | bucket | count |
 |---|---|
@@ -52,8 +52,8 @@ NLTK 3.9.2, WordNet 3.0. Agreement: 285730 / 287755 = 99.30%. Disagreements: 202
 | irregular-form | 33 |
 | names | 22 |
 | extra-rule | 582 |
-| min-stem | 92 |
-| data-version | 1040 |
+| min-stem | 91 |
+| data-version | 1026 |
 | nltk-shortest-candidate | 8 |
 | nltk-exception-only | 22 |
 | fallback-other | 61 |
@@ -145,7 +145,7 @@ The checked -men -> -man and -ses -> -sis rules ("businessmen", "fibroses"); NLT
 | sideswomen | sideswoman | sideswomen |
 | uranalyses | uranalysis | uranalyses |
 
-#### min-stem (92)
+#### min-stem (91)
 
 moult refuses a rule output shorter than three characters ("as" is not the plural of "a"); NLTK has no such floor.
 
@@ -158,26 +158,26 @@ moult refuses a rule output shorter than three characters ("as" is not the plura
 | exes | exes | ex |
 | ges | ges | ge |
 | mgs | mgs | mg |
-| oses | oses | os |
-| pis | pis | pi |
-| yis | yis | yi |
+| pas | pas | pa |
+| pus | pus | pu |
+| yrs | yrs | yr |
 
-#### data-version (1040)
+#### data-version (1026)
 
 (Compared against common lower-case lemmas only; capitalised PWN lemmas are tracked separately.) One side's answer exists only in one dictionary: Open English WordNet 2025 (moult) versus Princeton WordNet 3.0 (NLTK). Neither is wrong; the dictionaries differ.
 
 | word | moult | nltk |
 |---|---|---|
-| contemporarinesses | contemporariness | contemporarinesses |
-| deoxyguanylates | deoxyguanylate | deoxyguanylates |
-| ecdysteroids | ecdysteroid | ecdysteroids |
-| homothecies | homothecy | homothecies |
-| miserabilisms | miserabilism | miserabilisms |
-| monocentrisms | monocentrism | monocentrisms |
-| nanoplanktons | nanoplankton | nanoplanktons |
-| oligos | oligo | oligos |
-| pangens | pangen | pangens |
-| washpots | washpot | washpots |
+| coquets | coquet | coquets |
+| devilishnesses | devilishness | devilishnesses |
+| ell-wands | ell-wand | ell-wands |
+| hornworks | hornwork | hornworks |
+| monometallisms | monometallism | monometallisms |
+| more-movers | more-mover | more-movers |
+| neobaroques | neobaroque | neobaroques |
+| orographs | orograph | orographs |
+| pasteurisers | pasteuriser | pasteurisers |
+| woodrats | woodrat | woodrats |
 
 #### nltk-shortest-candidate (8)
 
@@ -265,7 +265,7 @@ Unexplained residue: every row, none judged intentional. The ordered rules are b
 
 The same comparison with the unknown-word fallback on (`cargo xtask-inflect --guess`; rows in `expected-guess.tsv`). Every row that differs from the default mode is a word the fallback changed. These are best-effort guesses for words WordNet lacks, and the suspected defects below are the known residual of the opt-in.
 
-NLTK 3.9.2, WordNet 3.0. Agreement: 285373 / 287755 = 99.17%. Disagreements: 2382.
+NLTK 3.9.2, WordNet 3.0. Agreement: 284961 / 287329 = 99.18%. Disagreements: 2368.
 
 | bucket | count |
 |---|---|
@@ -275,7 +275,7 @@ NLTK 3.9.2, WordNet 3.0. Agreement: 285373 / 287755 = 99.17%. Disagreements: 238
 | names | 22 |
 | extra-rule | 582 |
 | min-stem | 89 |
-| data-version | 1040 |
+| data-version | 1026 |
 | nltk-shortest-candidate | 8 |
 | fallback-ies | 2 |
 | fallback-es | 4 |
@@ -376,20 +376,20 @@ NLTK 3.9.2, WordNet 3.0. Agreement: 285373 / 287755 = 99.17%. Disagreements: 238
 | pis | pis | pi |
 | rus | rus | ru |
 
-#### data-version (1040)
+#### data-version (1026)
 
 | word | moult | nltk |
 |---|---|---|
-| deoxyguanylates | deoxyguanylate | deoxyguanylates |
-| ecdysteroids | ecdysteroid | ecdysteroids |
-| homothecies | homothecy | homothecies |
-| miserabilisms | miserabilism | miserabilisms |
-| monocentrisms | monocentrism | monocentrisms |
-| nanoplanktons | nanoplankton | nanoplanktons |
-| oligos | oligo | oligos |
-| pangens | pangen | pangens |
-| supervillains | supervillain | supervillains |
-| washpots | washpot | washpots |
+| devilishnesses | devilishness | devilishnesses |
+| ell-wands | ell-wand | ell-wands |
+| hornworks | hornwork | hornworks |
+| monometallisms | monometallism | monometallisms |
+| more-movers | more-mover | more-movers |
+| neobaroques | neobaroque | neobaroques |
+| orographs | orograph | orographs |
+| pasteurisers | pasteuriser | pasteurisers |
+| teratons | teraton | teratons |
+| woodrats | woodrat | woodrats |
 
 #### nltk-shortest-candidate (8)
 

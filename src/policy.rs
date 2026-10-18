@@ -502,6 +502,19 @@ pub(crate) static CH_REGULAR: &[&str] = &[
     "triptych", // three-panel artwork; /k/
 ];
 
+/// Known nouns that end in `s` after a consonant or `e` (the shape of a plural)
+/// but are real singulars, so pluralize adds `-es` instead of leaving them as
+/// the plural they look like. Nearly every other WordNet noun of that shape with
+/// no listed plural (thanks, clothes, earnings, 1990s) is already plural. Each
+/// must be a lower-case WordNet noun of that shape that no WordNet form or
+/// other list already settles.
+pub(crate) static S_REGULAR: &[&str] = &[
+    // Sorted by byte order.
+    "lens",    // optical element; the singular of lenses
+    "summons", // court order; the plural is summonses
+    "yes",     // an affirmative vote or answer; the plural is yeses
+];
+
 /// Known nouns ending in "man" whose plural is `-mans`, not `-men`, because
 /// "man" is not the word man. Every other noun ending in "man" (policeman,
 /// fireman, woman, ...) takes `-men`. Each must be a lower-case WordNet noun

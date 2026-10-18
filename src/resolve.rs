@@ -48,6 +48,10 @@ fn is_ch_regular(word: &str) -> bool {
     policy::CH_REGULAR.binary_search(&word).is_ok()
 }
 
+fn is_s_regular(key: &str) -> bool {
+    policy::S_REGULAR.binary_search(&key).is_ok()
+}
+
 fn is_other(key: &str) -> bool {
     contains(data::OTHERS, key)
 }
@@ -216,21 +220,24 @@ fn reduce(word: &str) -> Option<String> {
 ///   "Postgres", "Athens", "facies"). Such a word is unknown or only a name,
 ///   and adding `es` would invent a non-word. This holds whether or not the
 ///   unknown-word fallback strips the `s`, so a word the fallback refuses
-///   ("kubernetes", "moses") is also left alone by pluralize.
+///   ("kubernetes", "moses") is also left alone by pluralize; or
+/// - a WordNet noun that singularize keeps and that has the shape of a plural
+///   (see [`rules::has_plural_shape`]: `s` after a consonant, `e`, a digit
+///   or an apostrophe), when WordNet, the policy lists and [`S_REGULAR`] give
+///   it no plural ("thanks", "clothes", "1990s"). Nearly all are listed only as
+///   plural-only nouns, so `es` would invent a non-word.
 pub(crate) fn reads_as_plural(word: &str, key: &str) -> bool {
     if acronym_stem(word).is_some() {
         return true;
     }
     match resolve(key) {
         Sing::To(_) | Sing::Other => true,
+        Sing::Keep if is_noun_key(key) => {
+            rules::has_plural_shape(key) && !is_s_regular(key) && listed_plural(key).is_none()
+        }
         // A name such as "Kansas" is known, but not a noun.
-        Sing::Keep => ends_in_bare_s(key) && !is_noun_key(key),
-        Sing::Unknown => ends_in_bare_s(key),
+        Sing::Keep | Sing::Unknown => rules::ends_in_bare_s(key),
     }
-}
-
-fn ends_in_bare_s(key: &str) -> bool {
-    key.ends_with('s') && !key.ends_with("ss") && !rules::is_sis_word(key)
 }
 
 /// The [`Origin`] of the lower-case `plural` of `key`. A plural that only adds
@@ -244,17 +251,16 @@ pub(crate) fn plural_origin(key: &str, plural: &str) -> Origin {
     }
 }
 
-/// Pluralize steps 4 and 5 for the lower-case `key`: the irregular pairs,
-/// the plural choices, WordNet's forms, and the plural rules, with where the
-/// answer came from. The key is
-/// returned unchanged when that is the plural ("forceps").
-pub(crate) fn plural(key: &str) -> (Cow<'static, str>, Origin) {
+/// Pluralize step 4 for the lower-case `key`: the irregular pairs, the plural
+/// choices and WordNet's forms, with where the answer came from, or `None`
+/// when none of them lists a plural.
+fn listed_plural(key: &str) -> Option<(Cow<'static, str>, Origin)> {
     if let Some(&(_, plural)) = policy::IRREGULAR.iter().find(|&&(s, _)| s == key) {
-        return (Cow::Borrowed(plural), plural_origin(key, plural));
+        return Some((Cow::Borrowed(plural), plural_origin(key, plural)));
     }
     if let Ok(i) = policy::PLURAL_CHOICE.binary_search_by(|&(k, _)| k.cmp(key)) {
         let plural = policy::PLURAL_CHOICE[i].1;
-        return (Cow::Borrowed(plural), plural_origin(key, plural));
+        return Some((Cow::Borrowed(plural), plural_origin(key, plural)));
     }
     // Rows are (form, lemma). The generator guarantees that the policy lists
     // settle a lemma with several forms.
@@ -263,15 +269,24 @@ pub(crate) fn plural(key: &str) -> (Cow<'static, str>, Origin) {
         .map(|(form, _)| form);
     if let Some(form) = forms.next() {
         debug_assert!(forms.all(|f| f == form), "unsettled lemma {key:?}");
-        return (Cow::Borrowed(form), plural_origin(key, form));
+        return Some((Cow::Borrowed(form), plural_origin(key, form)));
     }
-    (
-        Cow::Owned(rules::plural(
-            key,
-            is_noun_key,
-            is_man_regular,
-            is_ch_regular,
-        )),
-        Origin::Rule,
-    )
+    None
+}
+
+/// Pluralize steps 4 and 5 for the lower-case `key`: the listed plurals and
+/// the plural rules, with where the answer came from. The key is
+/// returned unchanged when that is the plural ("forceps").
+pub(crate) fn plural(key: &str) -> (Cow<'static, str>, Origin) {
+    listed_plural(key).unwrap_or_else(|| {
+        (
+            Cow::Owned(rules::plural(
+                key,
+                is_noun_key,
+                is_man_regular,
+                is_ch_regular,
+            )),
+            Origin::Rule,
+        )
+    })
 }
