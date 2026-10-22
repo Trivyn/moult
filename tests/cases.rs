@@ -4,6 +4,7 @@
 //! a policy for them (src/policy.rs): the common modern reading wins, and a
 //! word with no clear reading is left unchanged.
 
+use moult::PartOfSpeech::{self, Adjective, Adverb, Noun, Verb};
 use std::borrow::Cow;
 
 const SINGULAR: &[(&str, &str)] = &[
@@ -256,4 +257,56 @@ fn singularize_cases() {
 #[test]
 fn pluralize_cases() {
     check(PLURAL, moult::pluralize);
+}
+
+/// Lemmatization: forms that suffix stripping alone gets wrong or that need a
+/// part of speech, plus the case-kept results. The expected value is the first
+/// candidate with the input's case pattern.
+const LEMMA: &[(&str, PartOfSpeech, &str)] = &[
+    // Irregular forms from WordNet's form list.
+    ("made", Verb, "make"),
+    ("went", Verb, "go"),
+    ("was", Verb, "be"),
+    ("been", Verb, "be"),
+    ("found", Verb, "find"),
+    ("saw", Verb, "see"),
+    ("going", Verb, "go"),
+    // Regular forms through the checked rules, including doubling and -ied.
+    ("running", Verb, "run"),
+    ("stopped", Verb, "stop"),
+    ("babysitting", Verb, "babysit"),
+    ("autopsied", Verb, "autopsy"),
+    ("hating", Verb, "hate"),
+    // A form with two readings: the curated base verb wins.
+    ("lay", Verb, "lay"),
+    // The part of speech decides.
+    ("better", Adjective, "good"),
+    ("better", Adverb, "well"),
+    ("later", Adjective, "late"),
+    ("modest", Adjective, "modest"),
+    // Case is kept.
+    ("Made", Verb, "Make"),
+    ("MADE", Verb, "MAKE"),
+    ("Went", Verb, "Go"),
+    // Unknown words are unchanged.
+    ("qwzzxed", Verb, "qwzzxed"),
+    ("qwzzx", Adjective, "qwzzx"),
+    // The noun reading is singularize.
+    ("leaves", Noun, "leaf"),
+    ("mice", Noun, "mouse"),
+];
+
+#[test]
+fn lemma_cases() {
+    let wrong: Vec<String> = LEMMA
+        .iter()
+        .filter_map(|&(input, pos, want)| {
+            let got = moult::lemmatize(input, pos);
+            (&*got != want).then(|| format!("{input} ({pos:?}) -> {got} (want {want})"))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "wrong:\n{}", wrong.join("\n"));
+    for &(input, pos, _) in LEMMA.iter().filter(|r| r.1 == Noun) {
+        assert_eq!(moult::lemmatize(input, pos), moult::singularize(input));
+    }
 }

@@ -74,5 +74,24 @@
       <Lemma writtenForm="pip" partOfSpeech="v"/>
       <Sense id="pip-v-1" synset="s17"/>
     </LexicalEntry>
+    <LexicalEntry id="e-good-a">
+      <Lemma writtenForm="good" partOfSpeech="a"/>
+      <Form writtenForm="better"/>
+      <Sense id="good-1" synset="s18"/>
+      <Sense id="good-2" synset="s19"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-drowsy-s">
+      <Lemma writtenForm="drowsy" partOfSpeech="s"/>
+      <Sense id="drowsy-1" synset="s20"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-Gallic-a">
+      <Lemma writtenForm="Gallic" partOfSpeech="a"/>
+      <Sense id="gallic-1" synset="s21"/>
+    </LexicalEntry>
+    <LexicalEntry id="e-well-r">
+      <Lemma writtenForm="well" partOfSpeech="r"/>
+      <Form writtenForm="better"/>
+      <Sense id="well-1" synset="s22"/>
+    </LexicalEntry>
   </Lexicon>
 </LexicalResource>

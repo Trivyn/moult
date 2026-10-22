@@ -1,11 +1,12 @@
 # moult
 
-**English noun inflection that checks its answers against a dictionary.**
+**English noun inflection and lemmatization that check their answers against a dictionary.**
 
 ```rust
 assert_eq!(moult::singularize("waves"), "wave");
 assert_eq!(moult::singularize("analysis"), "analysis");
 assert_eq!(moult::pluralize("criterion"), "criteria");
+assert_eq!(moult::lemmatize("made", moult::PartOfSpeech::Verb), "make");
 ```
 
 Suffix rules alone get English plurals wrong in both directions. Some
@@ -136,6 +137,42 @@ word: "attorney general" gives "attorney generals", not "attorneys general".
 Splitting an identifier ("OrderLines", "farm_workers") and inflecting a
 compound's head is the caller's job.
 
+## Lemmatization
+
+`lemmatize` turns an inflected word into its dictionary form as a part of
+speech you give it; `lemmas` and `lemmas_for` list the candidates:
+
+```rust
+use moult::PartOfSpeech::{Adjective, Verb};
+assert_eq!(moult::lemmatize("made", Verb), "make");
+assert_eq!(moult::lemmatize("Went", Verb), "Go");
+assert_eq!(moult::lemmatize("better", Adjective), "good");
+
+// Every reading of "saw": a noun, and two verb lemmas.
+let found: Vec<_> = moult::lemmas("saw").map(|l| (l.text, l.pos)).collect();
+assert_eq!(found.len(), 3);
+```
+
+- Candidates are checked against WordNet: each one is a lemma of the part of
+  speech being produced, or an `Inflector` override. The input itself need not
+  be listed ("hating" is not, yet gives "hate" and "hat"). A word for which no
+  WordNet form or suffix rule reaches a lemma has no candidates, and
+  `lemmatize` returns it unchanged. Lemmas are never guessed.
+- `lemmas` takes no part of speech and lists nouns, then verbs, adjectives and
+  adverbs. That order is not a preference between parts of speech; use
+  `lemmas_for` or `lemmatize` when you know the part of speech. Within one part
+  of speech the order is preferred-first: the override, the curated choice,
+  WordNet's forms, the suffix rules, then the word itself.
+- `lemmatize` keeps the input's case ("Went" → "Go", "MADE" → "MAKE"), but
+  `Lemma::text` is the lower-case dictionary entry.
+- For nouns, `lemmatize` is exactly `singularize`.
+- A lemma WordNet writes only with capitals ("African") is known and lists
+  itself, but no suffix rule ever reaches one.
+- `Inflector::builder().lemma(form, pos, lemma)` overrides a lemma for one
+  part of speech. A noun override acts as a singular/plural pair, so it also
+  changes `pluralize` for that lemma.
+- The reverse direction (make → made) is not generated.
+
 ## Cost
 
 Measured with `cargo xtask size` (macOS arm64, rustc 1.98.1; numbers vary by
@@ -144,10 +181,14 @@ target and toolchain):
 | Measure | Value |
 |---|---|
 | Release binary size delta, `singularize` + `pluralize` linked, stripped | +0.61 MB |
-| Clean build time, `-p moult`, debug | 0.3 s |
-| Clean build time, `-p moult`, release | 0.3 s |
-| `.crate` size | 230 KB |
-| Source size of the tables (`nouns.txt`, `names.txt`, `others.txt`, `data.rs`) | 528 KB |
+| Same, with `lemmatize` and `lemmas` also linked | +1.11 MB |
+| Clean build time, `-p moult`, debug | 0.5 s |
+| Clean build time, `-p moult`, release | 0.6 s |
+| `.crate` size | 383 KB |
+| Source size of `src/` | 1.1 MB |
+
+The lemma tables are always compiled in, but a program that never calls a lemma
+function does not link them: the noun-only cost is unchanged from 0.2.0.
 
 ## Data
 
@@ -180,6 +221,7 @@ cargo xtask report                  # policy counts; lists unclassified entries
 cargo xtask gen-data                # regenerate src/data.rs from the pinned release
 cargo xtask gen-data --check        # fail if the committed tables are stale
 cargo xtask-inflect [--guess] < words.txt  # singularize/pluralize each line, as TSV (needs moult; see below)
+cargo xtask-inflect --lemma < words.txt    # lemmatize each line, per part of speech (--lemma-candidates lists them)
 cargo xtask size                    # binary and build-time cost
 ```
 
@@ -194,7 +236,10 @@ and `cargo test --workspace` (which includes the acceptance cases in
 crate on Rust 1.70, and runs the data check.
 
 The NLTK differential in `tools/nltk-diff/` compares moult with NLTK's
-WordNet lemmatizer on Princeton WordNet 3.0, in the default mode
+WordNet lemmatizer on Princeton WordNet 3.0 (`--lemma` adds the verb, adjective
+and adverb comparison: 99.49% of word/part-of-speech pairs agree over 322k
+words, and every difference is bucketed in `DIFFERENCES.md`). The noun
+comparison runs in the default mode
 (`expected.tsv`) and with `guess_unknown(true)` (`expected-guess.tsv`). Its
 results are in `tools/nltk-diff/DIFFERENCES.md`. Its word list includes the
 host's `/usr/share/dict/words`; the committed expected files record that file's

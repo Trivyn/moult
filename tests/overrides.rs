@@ -1,6 +1,6 @@
 //! The caller-supplied override layer, through the public API only.
 
-use moult::{Inflector, OverrideError};
+use moult::{Inflector, OverrideError, PartOfSpeech};
 
 fn build(pairs: &[(&str, &str)], invariant: &[&str]) -> Result<Inflector, OverrideError> {
     let mut b = Inflector::builder();
@@ -89,6 +89,13 @@ fn every_error_variant_has_a_minimal_input_and_a_message() {
         (
             build(&[("a", "b")], &["a"]),
             OverrideError::Conflict("a".into()),
+        ),
+        (
+            Inflector::builder()
+                .lemma("x", PartOfSpeech::Verb, "y")
+                .lemma("X", PartOfSpeech::Verb, "z")
+                .build(),
+            OverrideError::DuplicateLemma("x".into()),
         ),
     ];
     for (got, want) in cases {

@@ -8,6 +8,8 @@ use alloc::vec::Vec;
 use core::fmt;
 
 use crate::case::{restore, Lower, Origin};
+use crate::lemma::{self, Lemmas};
+use crate::pos::PartOfSpeech;
 use crate::resolve::{
     acronym_stem, fallback_singular, is_invariant, is_noun_key, plural, plural_origin,
     reads_as_plural, resolve, Sing,
@@ -32,6 +34,9 @@ use crate::resolve::{
 /// assert_eq!(inflector.singularize("skus"), "sku");
 /// assert_eq!(inflector.pluralize("Personnel"), "Personnel");
 /// ```
+///
+/// A lemma override ([`InflectorBuilder::lemma`]) does the same for
+/// [`lemmatize`](Inflector::lemmatize) and [`lemmas`](Inflector::lemmas).
 #[derive(Clone, Debug, Default)]
 pub struct Inflector {
     /// `(singular, plural)`, sorted by singular.
@@ -40,13 +45,16 @@ pub struct Inflector {
     by_plural: Vec<(Box<str>, Box<str>)>,
     /// Sorted.
     invariant: Vec<Box<str>>,
+    /// `(form, part of speech, lemma)` for verbs, adjectives and adverbs,
+    /// sorted by form and part of speech. Noun lemma overrides are pairs.
+    lemmas: Vec<(Box<str>, PartOfSpeech, Box<str>)>,
     /// Whether singularize guesses at words no dictionary-checked step
     /// resolves; see [`InflectorBuilder::guess_unknown`].
     guess_unknown: bool,
 }
 
 /// What an override says about a word.
-enum Over<'a> {
+pub(crate) enum Over<'a> {
     /// Return the word unchanged.
     Keep,
     /// Return this lower-case word, the supplied plural when pluralizing.
@@ -60,6 +68,7 @@ impl Inflector {
             by_singular: Vec::new(),
             by_plural: Vec::new(),
             invariant: Vec::new(),
+            lemmas: Vec::new(),
             guess_unknown: false,
         }
     }
@@ -72,7 +81,7 @@ impl Inflector {
     /// The override for singularizing the lower-case `key`, if any: a plural
     /// of a pair gives its singular; a singular or an invariant word is left
     /// unchanged.
-    fn over_singular(&self, key: &str) -> Option<Over<'_>> {
+    pub(crate) fn over_singular(&self, key: &str) -> Option<Over<'_>> {
         if let Ok(i) = self.by_plural.binary_search_by(|(p, _)| (**p).cmp(key)) {
             return Some(Over::To(&self.by_plural[i].1));
         }
@@ -87,6 +96,26 @@ impl Inflector {
             return Some(Over::To(&self.by_singular[i].1));
         }
         self.is_override_word(key).then_some(Over::Keep)
+    }
+
+    /// The stored lower-case override singular or invariant word equal to
+    /// `key`, the text of the candidate that [`Over::Keep`] stands for.
+    pub(crate) fn override_word(&self, key: &str) -> Option<&str> {
+        if let Ok(i) = self.by_singular.binary_search_by(|(s, _)| (**s).cmp(key)) {
+            return Some(&self.by_singular[i].0);
+        }
+        let i = self.invariant.binary_search_by(|w| (**w).cmp(key)).ok()?;
+        Some(&self.invariant[i])
+    }
+
+    /// The override lemma of the lower-case `key` as `pos`, if any. Nouns
+    /// have none here: their lemma overrides are pairs.
+    pub(crate) fn lemma_override(&self, key: &str, pos: PartOfSpeech) -> Option<&str> {
+        let i = self
+            .lemmas
+            .binary_search_by(|(f, p, _)| (&**f, *p).cmp(&(key, pos)))
+            .ok()?;
+        Some(&self.lemmas[i].2)
     }
 
     fn is_override_word(&self, key: &str) -> bool {
@@ -234,6 +263,64 @@ impl Inflector {
         }
     }
 
+    /// Every lemma `word` can be read as, in each part of speech, as
+    /// lower-case dictionary entries. See [Lemmatize](crate#lemmatize) for the
+    /// order. Empty input and input that contains whitespace have none, and so
+    /// has a word no list, form or rule connects to a lemma.
+    ///
+    /// ```
+    /// use moult::PartOfSpeech;
+    /// let inflector = moult::Inflector::new();
+    /// let found: Vec<_> = inflector.lemmas("running").map(|l| (l.text, l.pos)).collect();
+    /// assert!(found.contains(&("run", PartOfSpeech::Verb)));
+    /// ```
+    pub fn lemmas(&self, word: &str) -> Lemmas<'_> {
+        let low = Lower::new(word);
+        lemma::collect(self, word, low.as_str(), None)
+    }
+
+    /// The lemmas of `word` as one part of speech, in the order of
+    /// [`lemmas`](Self::lemmas). Nouns follow singularize, with the other
+    /// readings of the word after its answer.
+    ///
+    /// ```
+    /// use moult::PartOfSpeech;
+    /// let inflector = moult::Inflector::new();
+    /// let first = inflector.lemmas_for("better", PartOfSpeech::Adverb).first();
+    /// assert_eq!(first.map(|l| l.text), Some("well"));
+    /// ```
+    pub fn lemmas_for(&self, word: &str, pos: PartOfSpeech) -> Lemmas<'_> {
+        let low = Lower::new(word);
+        lemma::collect(self, word, low.as_str(), Some(pos))
+    }
+
+    /// The lemma of `word` as the part of speech `pos`, with the case of the
+    /// input, or the word itself when it has none.
+    ///
+    /// For [`PartOfSpeech::Noun`] this is exactly
+    /// [`singularize`](Self::singularize). For the others it is the first
+    /// candidate of [`lemmas_for`](Self::lemmas_for), with the input's case
+    /// pattern applied ("Went" gives "Go", "MADE" gives "MAKE"). Returns
+    /// [`Cow::Borrowed`] with the input when it is unchanged.
+    ///
+    /// ```
+    /// use moult::PartOfSpeech::Verb;
+    /// let inflector = moult::Inflector::new();
+    /// assert_eq!(inflector.lemmatize("Went", Verb), "Go");
+    /// assert_eq!(inflector.lemmatize("stopped", Verb), "stop");
+    /// ```
+    pub fn lemmatize<'a>(&self, word: &'a str, pos: PartOfSpeech) -> Cow<'a, str> {
+        if pos == PartOfSpeech::Noun {
+            return self.singularize(word);
+        }
+        let low = Lower::new(word);
+        let key = low.as_str();
+        match lemma::collect(self, word, key, Some(pos)).first() {
+            Some(lemma) => changed(word, key, lemma.text, Origin::Form),
+            None => Cow::Borrowed(word),
+        }
+    }
+
     /// Whether `word` is a noun this inflector knows: an override word, a
     /// word in Open English WordNet's noun or name lists, or a word that
     /// the overrides, the invariant list, the irregular forms or the checked
@@ -258,7 +345,7 @@ impl Inflector {
 
 /// Whether both directions leave `word` alone: it is one character, contains
 /// whitespace (so it is not one word), or has no letter.
-fn is_inert(word: &str) -> bool {
+pub(crate) fn is_inert(word: &str) -> bool {
     let mut chars = word.chars();
     let single = chars.next().is_some() && chars.next().is_none();
     single || word.chars().any(char::is_whitespace) || !word.chars().any(char::is_alphabetic)
@@ -289,6 +376,7 @@ fn finish(word: &str, result: String) -> Cow<'_, str> {
 pub struct InflectorBuilder {
     pairs: Vec<(String, String)>,
     invariant: Vec<String>,
+    lemmas: Vec<(String, PartOfSpeech, String)>,
     guess_unknown: bool,
 }
 
@@ -297,6 +385,38 @@ impl InflectorBuilder {
     /// `singular`, and pluralize turns `singular` into `plural`.
     pub fn pair(mut self, singular: &str, plural: &str) -> Self {
         self.pairs.push((singular.into(), plural.into()));
+        self
+    }
+
+    /// Overrides the lemma of `form` as the part of speech `pos`:
+    /// [`lemmatize`](Inflector::lemmatize) turns `form` into `lemma` first,
+    /// and [`lemmas_for`](Inflector::lemmas_for) lists `lemma` ahead of every
+    /// dictionary candidate.
+    ///
+    /// For the other parts of speech, `form` equal to `lemma` is allowed: it
+    /// makes the word its own first lemma as that part of speech, so a caller
+    /// can prefer "saw" over "see" for the verb "saw". Two overrides for one
+    /// form and part of speech fail [`build`](Self::build) with
+    /// [`OverrideError::DuplicateLemma`].
+    ///
+    /// For [`PartOfSpeech::Noun`] this is the pair `(lemma, form)`: the lemma
+    /// of a noun is its singular, so `lemma("geese", Noun, "goose")` acts as
+    /// `pair("goose", "geese")` and
+    /// [`pluralize`](Inflector::pluralize) turns "goose" into "geese". It
+    /// must agree with every other noun override or [`build`](Self::build)
+    /// fails; an exact duplicate of a pair is accepted. This keeps
+    /// `lemmatize(w, Noun)` equal to `singularize(w)`.
+    ///
+    /// ```
+    /// use moult::PartOfSpeech::Verb;
+    /// let inflector = moult::Inflector::builder()
+    ///     .lemma("googled", Verb, "google")
+    ///     .build()
+    ///     .unwrap();
+    /// assert_eq!(inflector.lemmatize("Googled", Verb), "Google");
+    /// ```
+    pub fn lemma(mut self, form: &str, pos: PartOfSpeech, lemma: &str) -> Self {
+        self.lemmas.push((form.into(), pos, lemma.into()));
         self
     }
 
@@ -343,7 +463,11 @@ impl InflectorBuilder {
     /// [`invariant`](Self::invariant)), when two pairs share a singular or a
     /// plural, or when one word plays two roles: an invariant that is also in
     /// a pair, or a plural of one pair that is the singular of another. An
-    /// invariant word given twice is accepted.
+    /// invariant word given twice is accepted. The same holds for lemma
+    /// overrides: a form or lemma that is empty or contains whitespace, a
+    /// noun form equal to its lemma, and two lemmas for one form and part of speech,
+    /// nouns included ([`OverrideError::DuplicateLemma`]), are rejected; a noun
+    /// lemma override is checked as the pair it stands for.
     pub fn build(self) -> Result<Inflector, OverrideError> {
         let lower = |w: &String| -> Result<Box<str>, OverrideError> {
             if w.is_empty() || w.chars().any(char::is_whitespace) {
@@ -351,13 +475,42 @@ impl InflectorBuilder {
             }
             Ok(w.to_lowercase().into_boxed_str())
         };
-        let mut by_singular = Vec::with_capacity(self.pairs.len());
+        let mut by_singular = Vec::with_capacity(self.pairs.len() + self.lemmas.len());
         for (s, p) in &self.pairs {
             let (s, p) = (lower(s)?, lower(p)?);
             if s == p {
                 return Err(OverrideError::IdenticalPair(s.into()));
             }
             by_singular.push((s, p));
+        }
+        let mut stated = Vec::with_capacity(self.lemmas.len());
+        for (form, pos, lemma) in &self.lemmas {
+            let (form, lemma) = (lower(form)?, lower(lemma)?);
+            // A noun lemma override becomes a pair, and a pair needs two words.
+            if form == lemma && *pos == PartOfSpeech::Noun {
+                return Err(OverrideError::IdenticalPair(form.into()));
+            }
+            stated.push((form, *pos, lemma));
+        }
+        stated.sort();
+        // Two statements for one form and part of speech, nouns included.
+        if let Some(w) = stated
+            .windows(2)
+            .find(|w| w[0].0 == w[1].0 && w[0].1 == w[1].1)
+        {
+            return Err(OverrideError::DuplicateLemma(w[0].0.clone().into()));
+        }
+        let mut lemmas = Vec::new();
+        for (form, pos, lemma) in stated {
+            if pos == PartOfSpeech::Noun {
+                // The lemma of a noun is its singular. A pair that states the
+                // same thing is the same statement, not a second one.
+                if !by_singular.contains(&(lemma.clone(), form.clone())) {
+                    by_singular.push((lemma, form));
+                }
+            } else {
+                lemmas.push((form, pos, lemma));
+            }
         }
         let mut invariant = Vec::with_capacity(self.invariant.len());
         for w in &self.invariant {
@@ -393,6 +546,7 @@ impl InflectorBuilder {
             by_singular,
             by_plural,
             invariant,
+            lemmas,
             guess_unknown: self.guess_unknown,
         })
     }
@@ -425,6 +579,8 @@ pub enum OverrideError {
     /// The word has two roles: an invariant that is also in a pair, or a
     /// plural of one pair that is the singular of another.
     Conflict(String),
+    /// Two lemma overrides share this form and part of speech.
+    DuplicateLemma(String),
 }
 
 impl fmt::Display for OverrideError {
@@ -447,6 +603,9 @@ impl fmt::Display for OverrideError {
             }
             OverrideError::Conflict(w) => {
                 write!(f, "override word {w:?} has conflicting roles")
+            }
+            OverrideError::DuplicateLemma(w) => {
+                write!(f, "two override lemmas have the form {w:?}")
             }
         }
     }
@@ -519,6 +678,113 @@ mod tests {
         assert!(OverrideError::Conflict("b".into())
             .to_string()
             .contains("\"b\""));
+    }
+
+    #[test]
+    fn lemma_overrides() {
+        use PartOfSpeech::*;
+        let inf = Inflector::builder()
+            .lemma("Googled", Verb, "Google")
+            .lemma("geese", Noun, "goose")
+            .lemma("saw", Verb, "saw")
+            .lemma("fastest", Adjective, "quick")
+            .build()
+            .unwrap();
+        assert_eq!(inf.lemmatize("googled", Verb), "google");
+        assert_eq!(
+            inf.lemmas_for("GOOGLED", Verb).first().unwrap().text,
+            "google"
+        );
+        assert_eq!(inf.lemmatize("fastest", Adjective), "quick");
+        assert_eq!(inf.lemmatize("geese", Noun), inf.singularize("geese"));
+        assert_eq!(inf.pluralize("goose"), "geese");
+        let first = |w: &str, p| inf.lemmas_for(w, p).map(|l| l.text).next();
+        assert_eq!(first("fastest", Adjective), Some("quick"));
+        assert_eq!(first("fastest", Verb), None);
+        use OverrideError::*;
+        let err = |b: InflectorBuilder| b.build().err();
+        assert_eq!(
+            err(Inflector::builder().lemma("a b", Verb, "x")),
+            Some(InvalidWord("a b".into()))
+        );
+        // A noun lemma override equal to its form is an identical pair; for
+        // the other parts of speech it makes the word its own first lemma.
+        assert_eq!(
+            err(Inflector::builder().lemma("Run", Noun, "run")),
+            Some(IdenticalPair("run".into()))
+        );
+        assert_eq!(inf.lemmatize("saw", Verb), "saw");
+        assert_eq!(first("saw", Verb), Some("saw"));
+        assert_eq!(Inflector::new().lemmatize("saw", Verb), "see");
+        // Duplicates are rejected for every part of speech, nouns included.
+        assert_eq!(
+            err(Inflector::builder()
+                .lemma("geese", Noun, "goose")
+                .lemma("Geese", Noun, "goose")),
+            Some(DuplicateLemma("geese".into()))
+        );
+        assert_eq!(
+            err(Inflector::builder()
+                .lemma("geese", Noun, "goose")
+                .lemma("geese", Noun, "gander")),
+            Some(DuplicateLemma("geese".into()))
+        );
+        assert_eq!(
+            err(Inflector::builder()
+                .lemma("x", Verb, "a")
+                .lemma("X", Verb, "b")),
+            Some(DuplicateLemma("x".into()))
+        );
+        // The same form as another part of speech is not a duplicate.
+        assert!(Inflector::builder()
+            .lemma("x", Verb, "a")
+            .lemma("x", Adjective, "b")
+            .build()
+            .is_ok());
+        // A noun lemma override must agree with the pairs.
+        assert!(Inflector::builder()
+            .pair("goose", "geese")
+            .lemma("geese", Noun, "goose")
+            .build()
+            .is_ok());
+        assert_eq!(
+            err(Inflector::builder()
+                .pair("goose", "gooses")
+                .lemma("geese", Noun, "goose")),
+            Some(DuplicateSingular("goose".into()))
+        );
+        assert!(OverrideError::DuplicateLemma("x".into())
+            .to_string()
+            .contains("\"x\""));
+    }
+
+    #[test]
+    fn lemmatize_keeps_case_and_borrows_when_unchanged() {
+        use PartOfSpeech::*;
+        let inf = Inflector::new();
+        for (w, p, want) in [
+            ("made", Verb, "make"),
+            ("running", Verb, "run"),
+            ("stopped", Verb, "stop"),
+            ("autopsied", Verb, "autopsy"),
+            ("hating", Verb, "hate"),
+            ("found", Verb, "find"),
+            ("lay", Verb, "lay"),
+            ("better", Adjective, "good"),
+            ("better", Adverb, "well"),
+            ("later", Adjective, "late"),
+            ("modest", Adjective, "modest"),
+            ("Went", Verb, "Go"),
+            ("MADE", Verb, "MAKE"),
+            ("qwzzx", Verb, "qwzzx"),
+            ("two words", Verb, "two words"),
+        ] {
+            assert_eq!(inf.lemmatize(w, p), want, "{w}");
+        }
+        assert!(matches!(inf.lemmatize("qwzzx", Verb), Cow::Borrowed(_)));
+        assert!(matches!(inf.lemmatize("lay", Verb), Cow::Borrowed(_)));
+        assert!(inf.lemmas("two words").is_empty());
+        assert!(inf.lemmas("").is_empty());
     }
 
     #[test]

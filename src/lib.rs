@@ -150,6 +150,87 @@
 //! word: "attorney general" gives "attorney generals", not "attorneys
 //! general".
 //!
+//! # Lemmatize
+//!
+//! [`lemmatize`] turns an inflected word into its dictionary form as a given
+//! [`PartOfSpeech`] ("made" → "make" as a verb, "better" → "good" as an
+//! adjective and "well" as an adverb). [`lemmas`] and [`lemmas_for`] list every
+//! reading of a word as [`Lemma`] values: lower-case dictionary entries, each
+//! with its part of speech. For a verb, adjective or adverb, the case-kept
+//! result of `lemmatize` ("Went" → "Go", "MADE" → "MAKE") is the first
+//! candidate with the input's case pattern applied; candidates themselves are
+//! lower case. For a noun, `lemmatize` is [`singularize`] (see below), which
+//! can also apply the acronym rule and the opt-in unknown-word guess.
+//!
+//! Every candidate is a dictionary lemma (a noun or name of WordNet for the
+//! noun reading; a lemma of that part of speech for the others) or an
+//! [`Inflector`] override; the input itself need not be listed ("hating"
+//! gives "hate" and "hat"). A known lemma lists itself, so a word with no
+//! candidates is one that no WordNet form, suffix rule or override connects
+//! to a lemma of that part of speech.
+//!
+//! The candidates of one part of speech come in this order, and a lemma
+//! repeated as the same part of speech keeps its first position:
+//!
+//! 1. the [`Inflector`]'s override ([`InflectorBuilder::lemma`]);
+//! 2. the curated choice for a form with more than one reading ("lay" → "lay"
+//!    as a verb, which is also the past tense of "lie");
+//! 3. the forms WordNet lists ("made" → "make", "better" → "good", "found" →
+//!    "find"), in table order;
+//! 4. the suffix rules, when the stem is a lemma of that part of speech:
+//!    `-ies`, `-ied` and `-ying` ("carries", "carried", "dying"), `-es` and
+//!    `-s`, `-ed` and `-ing` to the stem or to the stem plus `e` or without a
+//!    doubled consonant ("hating" → "hate", "stopped" → "stop"), and `-ier`,
+//!    `-iest`, `-er` and `-est` for adjectives ("later" → "late"). Adverbs have
+//!    no rule;
+//! 5. the word itself, when it is a lemma of that part of speech ("modest").
+//!
+//! Lemmas WordNet writes only with capitals ("Americanize" as a verb,
+//! "African" as an adjective, "OK" as an adverb) are treated as for nouns,
+//! where they are names: they are known, so they list themselves (as
+//! lower-case text) and are the lemma of a form WordNet lists for them, but
+//! no suffix rule ever reaches one.
+//!
+//! [`lemmas`] lists the nouns, then the verbs, adjectives and adverbs. That
+//! order carries no preference between parts of speech; the caller knows the
+//! part of speech and uses [`lemmas_for`] or [`lemmatize`]. For example
+//! `lemmas("saw")` has "saw" as a noun, "see" as a verb and "saw" as a verb.
+//!
+//! The nouns are [`singularize`]: [`lemmatize`] with [`PartOfSpeech::Noun`] is
+//! exactly `singularize`. When `singularize` reaches a noun or name of the
+//! dictionary through its checked steps (overrides first), that word is the
+//! first noun candidate. Where its answer is a word that is not in WordNet's
+//! nouns or names (a word the policy lists keep, such as "ellipses"), it is
+//! not a candidate, so a word can have no noun candidate and still come back
+//! from `singularize` unchanged. The other noun readings follow: other
+//! WordNet forms, the irregular pairs, rule results that are nouns, and the
+//! word itself when it is a noun or name ("axes" lists "axis", then "ax" and
+//! "axe"). There are no acronym or guessed candidates.
+//!
+//! A word the lists, forms and rules do not connect to a lemma has no
+//! candidates, and `lemmatize` returns it unchanged; a lemma lists itself,
+//! whatever its length ("a" is a noun lemma, "10" an adjective lemma). The
+//! functions take one word: empty input, and input that contains whitespace,
+//! has no candidates. The suffix rules have minimum lengths, and stem rules for
+//! verbs and adjectives read ASCII words of at most 64 bytes. An [`Inflector`]
+//! can override a lemma per part of speech with [`InflectorBuilder::lemma`]; a
+//! noun lemma override acts as the singular/plural pair it states.
+//!
+//! The result ([`Lemmas`]) has fixed storage and its candidate text is
+//! borrowed from the tables and the [`Inflector`]. Looking up an ASCII word of
+//! at most 64 bytes allocates nothing for verbs, adjectives and adverbs. The
+//! noun reading allocates a temporary `String` when a suffix rule of
+//! [`singularize`] fires, and a longer or non-ASCII word allocates a
+//! lower-cased lookup key (as [`singularize`] does).
+//!
+//! ```
+//! use moult::PartOfSpeech::{Adverb, Verb};
+//! assert_eq!(moult::lemmatize("running", Verb), "run");
+//! assert_eq!(moult::lemmatize("hating", Verb), "hate");
+//! assert_eq!(moult::lemmatize("MADE", Verb), "MAKE");
+//! assert_eq!(moult::lemmatize("better", Adverb), "well");
+//! ```
+//!
 //! # Case
 //!
 //! Both directions keep the input's case pattern. The characters of the
@@ -181,12 +262,16 @@ use alloc::borrow::Cow;
 mod case;
 mod data;
 mod inflector;
+mod lemma;
 mod lookup;
 mod policy;
+mod pos;
 mod resolve;
 mod rules;
 
 pub use inflector::{Inflector, InflectorBuilder, OverrideError};
+pub use lemma::{Lemma, Lemmas};
+pub use pos::PartOfSpeech;
 
 /// The inflector with no overrides, behind the free functions.
 static DEFAULT: Inflector = Inflector::new();
@@ -270,6 +355,50 @@ pub fn pluralize_phrase(phrase: &str) -> Cow<'_, str> {
 /// ```
 pub fn is_noun(word: &str) -> bool {
     DEFAULT.is_noun(word)
+}
+
+/// Every lemma `word` can be read as, in each part of speech, as lower-case
+/// dictionary entries. The order is in [Lemmatize](crate#lemmatize). The
+/// result is empty for input that contains whitespace and for a word no list,
+/// form or rule connects to a lemma.
+///
+/// ```
+/// use moult::PartOfSpeech;
+/// let found: Vec<(&str, PartOfSpeech)> =
+///     moult::lemmas("running").map(|l| (l.text, l.pos)).collect();
+/// assert!(found.contains(&("run", PartOfSpeech::Verb)));
+/// assert!(moult::lemmas("qwzzx").is_empty());
+/// ```
+pub fn lemmas(word: &str) -> Lemmas<'static> {
+    DEFAULT.lemmas(word)
+}
+
+/// The lemmas of `word` as one part of speech, in the order of [`lemmas`].
+///
+/// ```
+/// use moult::PartOfSpeech::{Adjective, Adverb};
+/// assert_eq!(moult::lemmas_for("better", Adjective).first().map(|l| l.text), Some("good"));
+/// assert_eq!(moult::lemmas_for("better", Adverb).first().map(|l| l.text), Some("well"));
+/// ```
+pub fn lemmas_for(word: &str, pos: PartOfSpeech) -> Lemmas<'static> {
+    DEFAULT.lemmas_for(word, pos)
+}
+
+/// The lemma of `word` as the part of speech `pos`, with the case of the
+/// input, or the word itself when it has none. For [`PartOfSpeech::Noun`] this
+/// is [`singularize`]. Returns [`Cow::Borrowed`] with the input when it is
+/// unchanged.
+///
+/// ```
+/// use moult::PartOfSpeech::{Adjective, Noun, Verb};
+/// assert_eq!(moult::lemmatize("made", Verb), "make");
+/// assert_eq!(moult::lemmatize("Went", Verb), "Go");
+/// assert_eq!(moult::lemmatize("better", Adjective), "good");
+/// assert_eq!(moult::lemmatize("mice", Noun), "mouse");
+/// assert!(matches!(moult::lemmatize("qwzzx", Verb), std::borrow::Cow::Borrowed(_)));
+/// ```
+pub fn lemmatize(word: &str, pos: PartOfSpeech) -> Cow<'_, str> {
+    DEFAULT.lemmatize(word, pos)
 }
 
 #[cfg(test)]

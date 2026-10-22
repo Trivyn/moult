@@ -4,8 +4,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::policy;
-use crate::rules::{checked_singular, has_plural_shape, plural};
-use crate::wordnet::Wordnet;
+use crate::pos::{PartOfSpeech, LEMMA_CAPACITY};
+use crate::rules::{
+    adjective_stems, checked_singular, has_plural_shape, plural, singular_candidates, verb_stems,
+};
+use crate::wordnet::{PosTables, Wordnet, LEMMA_POS};
 
 /// The policy lists the analysis consults.
 pub struct Policy<'a> {
@@ -17,6 +20,8 @@ pub struct Policy<'a> {
     pub man_regular: &'a [&'a str],
     pub ch_regular: &'a [&'a str],
     pub s_regular: &'a [&'a str],
+    pub lemma_choice: &'a [(&'a str, PartOfSpeech, &'a str)],
+    pub lemma_excluded: &'a [(&'a str, PartOfSpeech, &'a str)],
 }
 
 impl Policy<'static> {
@@ -30,6 +35,8 @@ impl Policy<'static> {
             man_regular: policy::MAN_REGULAR,
             ch_regular: policy::CH_REGULAR,
             s_regular: policy::S_REGULAR,
+            lemma_choice: policy::LEMMA_CHOICE,
+            lemma_excluded: policy::LEMMA_EXCLUDED,
         }
     }
 }
@@ -47,6 +54,25 @@ impl Policy<'_> {
             |w| self.man_regular.contains(&w),
             |w| self.ch_regular.contains(&w),
         )
+    }
+
+    /// The plural the runtime gives `lemma`: the irregular pairs, the plural
+    /// choices, WordNet's surviving forms, then the rules.
+    fn runtime_plural(&self, wn: &Wordnet, lemma: &str) -> String {
+        if let Some((_, p)) = self.irregular.iter().find(|(s, _)| *s == lemma) {
+            return p.to_string();
+        }
+        if let Some((_, p)) = self.plural_choice.iter().find(|(k, _)| *k == lemma) {
+            return p.to_string();
+        }
+        if let Some((f, _)) = wn
+            .forms
+            .iter()
+            .find(|(f, l)| l == lemma && !self.excluded.contains(&(l.as_str(), f.as_str())))
+        {
+            return f.clone();
+        }
+        self.rule_plural(wn, lemma)
     }
 
     fn singular_choice(&self, w: &str) -> bool {
@@ -89,6 +115,16 @@ impl Policy<'_> {
         wn.forms
             .iter()
             .any(|(f, l)| l == lemma && !self.excluded.contains(&(l.as_str(), f.as_str())))
+    }
+
+    fn lemma_choice(&self, form: &str, pos: PartOfSpeech) -> bool {
+        self.lemma_choice
+            .iter()
+            .any(|(f, p, _)| *f == form && *p == pos)
+    }
+
+    fn lemma_excluded(&self, form: &str, pos: PartOfSpeech, lemma: &str) -> bool {
+        self.lemma_excluded.contains(&(form, pos, lemma))
     }
 
     fn settles_plural(&self, lemma: &str) -> bool {
@@ -148,7 +184,177 @@ pub struct Analysis {
     /// Plural-shaped noun lemmas that singularize keeps and pluralize leaves
     /// unchanged ("thanks", "clothes").
     pub plural_only: Vec<String>,
+    /// L1: a listed form, or the word itself, competes with another reading
+    /// of the same part of speech. Refused until classified.
+    pub l1: Vec<LemmaEntry>,
+    /// L2: two or more readings, all from the suffix rules. Reported only.
+    pub l2: Vec<LemmaEntry>,
+    /// The input with the most candidates across all four parts of speech,
+    /// and how many.
+    pub max_candidates: (String, usize),
     pub problems: Vec<String>,
+}
+
+/// One lemmatization ambiguity: an input, a part of speech and the competing
+/// lemmas.
+pub struct LemmaEntry {
+    pub pos: PartOfSpeech,
+    pub input: String,
+    /// The candidates in the order the runtime tries them before any policy
+    /// row: listed forms, rule stems, then the word itself.
+    pub candidates: Vec<String>,
+    /// The candidate with the most senses in this part of speech; ties keep
+    /// the default order.
+    pub suggestion: String,
+    pub classified: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Src {
+    Form,
+    Rule,
+    Own,
+}
+
+/// A part of speech's lemmas and its listed forms after exclusions.
+struct PosIndex<'a> {
+    pos: PartOfSpeech,
+    tab: &'a PosTables,
+    by_form: BTreeMap<&'a str, BTreeSet<&'a str>>,
+}
+
+impl<'a> PosIndex<'a> {
+    fn new(wn: &'a Wordnet, pol: &Policy, pos: PartOfSpeech) -> PosIndex<'a> {
+        let tab = wn.of(pos);
+        let mut by_form: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+        for (form, lemma) in &tab.forms {
+            if !pol.lemma_excluded(form, pos, lemma) {
+                by_form.entry(form).or_default().insert(lemma);
+            }
+        }
+        PosIndex { pos, tab, by_form }
+    }
+
+    /// The candidates of `w` with where each came from, de-duplicated and in
+    /// default order: listed forms, rule stems that are lower-case lemmas (never
+    /// a capitalised-only one), `w` itself when it is either.
+    fn candidates(&self, w: &str) -> Vec<(String, Src)> {
+        let mut out: Vec<(String, Src)> = Vec::new();
+        let mut push = |c: &str, src: Src| {
+            if !out.iter().any(|(t, _)| t == c) {
+                out.push((c.to_string(), src));
+            }
+        };
+        if let Some(lemmas) = self.by_form.get(w) {
+            for l in lemmas {
+                push(l, Src::Form);
+            }
+        }
+        let mut rule = |stem: &str| {
+            if self.tab.lemmas.contains(stem) {
+                push(stem, Src::Rule);
+            }
+        };
+        match self.pos {
+            PartOfSpeech::Verb => verb_stems(w, &mut rule),
+            PartOfSpeech::Adjective => adjective_stems(w, &mut rule),
+            _ => {}
+        }
+        if self.tab.is_known(w) {
+            push(w, Src::Own);
+        }
+        out
+    }
+
+    /// Every input worth analysing: the lemmas, the listed forms, and the
+    /// regular inflections of every lemma (approximate: it feeds the report
+    /// and the capacity check, never the tables).
+    fn universe(&self) -> BTreeSet<String> {
+        let mut out: BTreeSet<String> = self.tab.lemmas.iter().cloned().collect();
+        out.extend(self.tab.capitalised.iter().cloned());
+        out.extend(self.by_form.keys().map(|f| f.to_string()));
+        for l in &self.tab.lemmas {
+            match self.pos {
+                PartOfSpeech::Verb => verb_inflections(l, &mut out),
+                PartOfSpeech::Adjective => adjective_inflections(l, &mut out),
+                _ => {}
+            }
+        }
+        out
+    }
+}
+
+fn is_cons(c: char) -> bool {
+    c.is_ascii_lowercase() && !matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')
+}
+
+/// Whether `lemma` ends consonant-vowel-consonant, the last not `w`, `x` or
+/// `y`: the shape that doubles its final consonant (stop, big).
+fn ends_cvc(lemma: &str) -> bool {
+    let c: Vec<char> = lemma.chars().rev().take(3).collect();
+    c.len() == 3
+        && is_cons(c[0])
+        && !matches!(c[0], 'w' | 'x' | 'y')
+        && !is_cons(c[1])
+        && is_cons(c[2])
+}
+
+fn consonant_y(lemma: &str) -> Option<&str> {
+    let stem = lemma.strip_suffix('y')?;
+    stem.chars().last().filter(|c| is_cons(*c)).map(|_| stem)
+}
+
+fn verb_inflections(l: &str, out: &mut BTreeSet<String>) {
+    if let Some(stem) = consonant_y(l) {
+        out.insert(format!("{stem}ies"));
+        out.insert(format!("{stem}ied"));
+    } else if l.ends_with(['s', 'x', 'z', 'o']) || l.ends_with("ch") || l.ends_with("sh") {
+        out.insert(format!("{l}es"));
+    } else {
+        out.insert(format!("{l}s"));
+    }
+    let last = l.chars().last().unwrap_or(' ');
+    let doubled = |suffix: &str, out: &mut BTreeSet<String>| {
+        if ends_cvc(l) {
+            out.insert(format!("{l}{last}{suffix}"));
+        }
+    };
+    if let Some(stem) = l.strip_suffix("ie") {
+        out.insert(format!("{l}d"));
+        out.insert(format!("{stem}ying"));
+    } else if let Some(stem) = l.strip_suffix('e') {
+        out.insert(format!("{l}d"));
+        if !l.ends_with("ee") && !l.ends_with("ye") && !l.ends_with("oe") {
+            out.insert(format!("{stem}ing"));
+        } else {
+            out.insert(format!("{l}ing"));
+        }
+    } else {
+        if consonant_y(l).is_none() {
+            out.insert(format!("{l}ed"));
+        }
+        out.insert(format!("{l}ing"));
+        doubled("ed", out);
+        doubled("ing", out);
+    }
+}
+
+fn adjective_inflections(l: &str, out: &mut BTreeSet<String>) {
+    if let Some(stem) = consonant_y(l) {
+        out.insert(format!("{stem}ier"));
+        out.insert(format!("{stem}iest"));
+    } else if l.ends_with('e') {
+        out.insert(format!("{l}r"));
+        out.insert(format!("{l}st"));
+    } else {
+        out.insert(format!("{l}er"));
+        out.insert(format!("{l}est"));
+        if ends_cvc(l) {
+            let last = l.chars().last().unwrap_or(' ');
+            out.insert(format!("{l}{last}er"));
+            out.insert(format!("{l}{last}est"));
+        }
+    }
 }
 
 fn plural_senses(n: u32) -> String {
@@ -367,6 +573,8 @@ pub fn analyze(wn: &Wordnet, pol: &Policy) -> Analysis {
         .cloned()
         .collect();
 
+    let (l1, l2, max_candidates) = analyze_lemmas(wn, pol, &by_form);
+
     let mut an = Analysis {
         a,
         a_invariant,
@@ -381,10 +589,124 @@ pub fn analyze(wn: &Wordnet, pol: &Policy) -> Analysis {
         f_with_ves,
         d_doubling,
         plural_only,
+        l1,
+        l2,
+        max_candidates,
         problems: Vec::new(),
     };
     an.problems = validate(wn, pol, &an);
+    let (word, count) = &an.max_candidates;
+    if *count > LEMMA_CAPACITY - 4 {
+        an.problems.push(format!(
+            "{word:?} has {count} lemma candidates; LEMMA_CAPACITY {LEMMA_CAPACITY} leaves room for {}",
+            LEMMA_CAPACITY - 4
+        ));
+    }
     an
+}
+
+/// Rank `cands` by their senses as `tab`'s part of speech, most first; ties
+/// keep the order they came in.
+fn rank_by_pos_senses(tab: &PosTables, mut cands: Vec<String>) -> Vec<String> {
+    cands.sort_by_key(|c| std::cmp::Reverse(tab.senses_of(c)));
+    cands
+}
+
+/// The noun readings of `w` the lemmatizer would offer: lemmas of listed
+/// forms, an irregular plural's singular, a singular choice, the noun the
+/// checked rules reach, and the word itself when it is a known noun or name.
+fn noun_candidates(
+    wn: &Wordnet,
+    pol: &Policy,
+    noun_forms: &BTreeMap<&str, BTreeSet<&str>>,
+    w: &str,
+) -> BTreeSet<String> {
+    let mut out: BTreeSet<String> = BTreeSet::new();
+    if let Some(lemmas) = noun_forms.get(w) {
+        out.extend(lemmas.iter().map(|l| l.to_string()));
+    }
+    out.extend(
+        pol.irregular
+            .iter()
+            .filter(|(_, p)| *p == w)
+            .map(|(s, _)| s.to_string()),
+    );
+    out.extend(
+        pol.singular_choice
+            .iter()
+            .filter(|(k, v)| *k == w && (*v != w || wn.is_known(w)))
+            .map(|(_, v)| v.to_string()),
+    );
+    // The runtime's gate: a word WordNet lists only as another part of speech
+    // reduces by rule only to the noun it is the plural of ("alas" is not the
+    // plural of "ala"), and only by the first checked rule.
+    let man_regular = |x: &str| pol.man_regular.contains(&x);
+    if wn.others.contains(w) && !wn.is_known(w) {
+        out.extend(
+            checked_singular(w, |c| wn.is_noun(c), man_regular)
+                .filter(|noun| pol.runtime_plural(wn, noun) == w),
+        );
+    } else {
+        let men = w.ends_with("men");
+        out.extend(
+            singular_candidates(w)
+                .into_iter()
+                .filter(|c| wn.is_noun(c) && !(men && man_regular(c))),
+        );
+    }
+    if wn.is_known(w) {
+        out.insert(w.to_string());
+    }
+    out
+}
+
+/// The L1 and L2 entries, and the largest candidate count across the four
+/// parts of speech.
+fn analyze_lemmas(
+    wn: &Wordnet,
+    pol: &Policy,
+    noun_forms: &BTreeMap<&str, BTreeSet<&str>>,
+) -> (Vec<LemmaEntry>, Vec<LemmaEntry>, (String, usize)) {
+    let (mut l1, mut l2) = (Vec::new(), Vec::new());
+    let indexes: Vec<PosIndex> = LEMMA_POS
+        .iter()
+        .map(|&p| PosIndex::new(wn, pol, p))
+        .collect();
+    let mut everything: BTreeSet<String> = wn.nouns.iter().chain(&wn.names).cloned().collect();
+    everything.extend(noun_forms.keys().map(|f| f.to_string()));
+    for ix in &indexes {
+        let universe = ix.universe();
+        for w in &universe {
+            let cands = ix.candidates(w);
+            if cands.len() < 2 {
+                continue;
+            }
+            let strong = cands.iter().any(|(_, src)| *src != Src::Rule);
+            let candidates: Vec<String> = cands.into_iter().map(|(c, _)| c).collect();
+            let suggestion = rank_by_pos_senses(ix.tab, candidates.clone()).swap_remove(0);
+            let entry = LemmaEntry {
+                pos: ix.pos,
+                input: w.clone(),
+                classified: pol.lemma_choice(w, ix.pos),
+                candidates,
+                suggestion,
+            };
+            if strong { &mut l1 } else { &mut l2 }.push(entry);
+        }
+        everything.extend(universe);
+    }
+    let mut max = (String::new(), 0);
+    for w in &everything {
+        let count = noun_candidates(wn, pol, noun_forms, w).len()
+            + indexes
+                .iter()
+                .map(|ix| ix.candidates(w).len())
+                .sum::<usize>();
+        if count > max.1 {
+            max = (w.clone(), count);
+        }
+    }
+    (l1, l2, max)
 }
 
 /// Every answer a SINGULAR_CHOICE for `input` may name: lemmas of WordNet
@@ -490,6 +812,17 @@ fn validate(wn: &Wordnet, pol: &Policy, an: &Analysis) -> Vec<String> {
     sorted(
         "EXCLUDED_FORMS",
         is_sorted_unique(pol.excluded.iter()),
+        &mut out,
+    );
+
+    sorted(
+        "LEMMA_CHOICE",
+        is_sorted_unique(pol.lemma_choice.iter().map(|r| (r.0, r.1))),
+        &mut out,
+    );
+    sorted(
+        "LEMMA_EXCLUDED",
+        is_sorted_unique(pol.lemma_excluded.iter()),
         &mut out,
     );
 
@@ -658,6 +991,52 @@ fn validate(wn: &Wordnet, pol: &Policy, an: &Analysis) -> Vec<String> {
             ));
         }
     }
+    for (form, pos, lemma) in pol.lemma_choice {
+        let name = format!("LEMMA_CHOICE ({form:?}, {pos:?}, {lemma:?})");
+        if *pos == PartOfSpeech::Noun {
+            out.push(format!("{name}: nouns are settled by the noun lists"));
+            continue;
+        }
+        for (what, word) in [("form", form), ("lemma", lemma)] {
+            if let Some(why) = bad_shape(word) {
+                out.push(format!("{name}: {what} is {why}"));
+            }
+        }
+        let live = an
+            .l1
+            .iter()
+            .map(|e| (e, false))
+            .chain(an.l2.iter().map(|e| (e, true)))
+            .find(|(e, _)| e.input == *form && e.pos == *pos);
+        let Some((entry, rules_only)) = live else {
+            out.push(format!("{name}: stale, no live ambiguity"));
+            continue;
+        };
+        if !entry.candidates.iter().any(|c| c == lemma) {
+            out.push(format!(
+                "{name}: invalid, lemma is not among the candidates {:?}",
+                entry.candidates
+            ));
+        } else if rules_only && entry.candidates[0] == *lemma {
+            out.push(format!(
+                "{name}: redundant, the default order already puts it first"
+            ));
+        }
+    }
+    for (form, pos, lemma) in pol.lemma_excluded {
+        let name = format!("LEMMA_EXCLUDED ({form:?}, {pos:?}, {lemma:?})");
+        if *pos == PartOfSpeech::Noun {
+            out.push(format!("{name}: nouns use EXCLUDED_FORMS"));
+            continue;
+        }
+        if !wn
+            .of(*pos)
+            .forms
+            .contains(&(form.to_string(), lemma.to_string()))
+        {
+            out.push(format!("{name}: stale, not a WordNet form"));
+        }
+    }
     out
 }
 
@@ -698,6 +1077,8 @@ mod tests {
             man_regular: &[],
             ch_regular: &[],
             s_regular: &[],
+            lemma_choice: &[],
+            lemma_excluded: &[],
         }
     }
 
@@ -1055,6 +1436,14 @@ mod tests {
             man_regular: &["shaman", "human"],
             ch_regular: &["stomach", "monarch"],
             s_regular: &["yes", "lens"],
+            lemma_choice: &[
+                ("b", PartOfSpeech::Verb, "b"),
+                ("a", PartOfSpeech::Verb, "a"),
+            ],
+            lemma_excluded: &[
+                ("b", PartOfSpeech::Verb, "b"),
+                ("a", PartOfSpeech::Verb, "a"),
+            ],
         };
         let p = problems(&wn, &pol);
         for list in [
@@ -1066,6 +1455,8 @@ mod tests {
             "MAN_REGULAR",
             "CH_REGULAR",
             "S_REGULAR",
+            "LEMMA_CHOICE",
+            "LEMMA_EXCLUDED",
         ] {
             assert!(
                 p.iter()
@@ -1073,5 +1464,156 @@ mod tests {
                 "{list}"
             );
         }
+    }
+
+    fn lemma_wordnet() -> Wordnet {
+        let mut wn = wordnet();
+        for v in ["find", "found", "make", "hate", "hat", "stop"] {
+            wn.verb.lemmas.insert(v.into());
+            wn.verb.senses.insert(v.into(), 1);
+        }
+        wn.verb.senses.insert("find".into(), 5);
+        for (f, l) in [("found", "find"), ("made", "make")] {
+            wn.verb.forms.insert((f.into(), l.into()));
+        }
+        for a in ["late", "later"] {
+            wn.adjective.lemmas.insert(a.into());
+        }
+        wn.adjective.forms.insert(("later".into(), "late".into()));
+        wn
+    }
+
+    const VERB: PartOfSpeech = PartOfSpeech::Verb;
+
+    #[test]
+    fn classifies_lemma_ambiguities() {
+        let an = analyze(&lemma_wordnet(), &no_policy());
+        // a listed form competing with the word itself: refused until classified
+        let found = an.l1.iter().find(|e| e.input == "found").unwrap();
+        assert_eq!(found.candidates, ["find", "found"]);
+        assert_eq!(found.suggestion, "find");
+        assert_eq!(found.pos, VERB);
+        assert!(!found.classified);
+        // a rule reading against the word itself, as an adjective
+        let later = an.l1.iter().find(|e| e.input == "later").unwrap();
+        assert_eq!(later.candidates, ["late", "later"]);
+        assert_eq!(later.pos, PartOfSpeech::Adjective);
+        // rules only: reported, not refused
+        let hated = an.l2.iter().find(|e| e.input == "hated").unwrap();
+        assert_eq!(hated.candidates, ["hate", "hat"]);
+        assert!(an.l1.iter().all(|e| e.input != "hated"));
+        // one listed form alone is no ambiguity
+        assert!(an.l1.iter().chain(&an.l2).all(|e| e.input != "made"));
+        assert!(an.problems.is_empty(), "{:?}", an.problems);
+        assert!(an.max_candidates.1 <= LEMMA_CAPACITY - 4);
+    }
+
+    #[test]
+    fn lemma_choice_classifies_and_flags_stale_invalid_and_redundant() {
+        let wn = lemma_wordnet();
+        let ok = Policy {
+            lemma_choice: &[
+                ("found", VERB, "find"),
+                ("hated", VERB, "hat"),
+                ("later", PartOfSpeech::Adjective, "late"),
+            ],
+            ..no_policy()
+        };
+        let an = analyze(&wn, &ok);
+        assert!(an.problems.is_empty(), "{:?}", an.problems);
+        assert!(an.l1.iter().all(|e| e.classified));
+        assert!(
+            an.l2
+                .iter()
+                .find(|e| e.input == "hated")
+                .unwrap()
+                .classified
+        );
+        let has = |pol: Policy, needle: &str| {
+            let p = problems(&wn, &pol);
+            assert!(p.iter().any(|x| x.contains(needle)), "{needle}: {p:?}");
+        };
+        has(
+            Policy {
+                lemma_choice: &[("zzz", VERB, "zzz")],
+                ..no_policy()
+            },
+            "stale",
+        );
+        // the live ambiguity is for the verb, not the adverb
+        has(
+            Policy {
+                lemma_choice: &[("found", PartOfSpeech::Adverb, "find")],
+                ..no_policy()
+            },
+            "stale",
+        );
+        has(
+            Policy {
+                lemma_choice: &[("found", VERB, "make")],
+                ..no_policy()
+            },
+            "invalid",
+        );
+        // an L2 row equal to the default first candidate is redundant ...
+        has(
+            Policy {
+                lemma_choice: &[("hated", VERB, "hate")],
+                ..no_policy()
+            },
+            "redundant",
+        );
+        // ... an L1 row is not: it acknowledges the ambiguity
+        let l1 = Policy {
+            lemma_choice: &[("found", VERB, "find")],
+            ..no_policy()
+        };
+        assert!(!problems(&wn, &l1).iter().any(|x| x.contains("redundant")));
+        has(
+            Policy {
+                lemma_choice: &[("found", PartOfSpeech::Noun, "find")],
+                ..no_policy()
+            },
+            "nouns",
+        );
+        has(
+            Policy {
+                lemma_choice: &[("found", VERB, "Find")],
+                ..no_policy()
+            },
+            "lemma is",
+        );
+    }
+
+    #[test]
+    fn lemma_excluded_drops_a_listed_form_and_must_be_live() {
+        let wn = lemma_wordnet();
+        let pol = Policy {
+            lemma_excluded: &[("found", VERB, "find")],
+            ..no_policy()
+        };
+        let an = analyze(&wn, &pol);
+        // found no longer lists find, so only the word itself remains
+        assert!(an.l1.iter().all(|e| e.input != "found"));
+        assert!(an.problems.is_empty(), "{:?}", an.problems);
+        let stale = Policy {
+            lemma_excluded: &[("founded", VERB, "find")],
+            ..no_policy()
+        };
+        assert!(problems(&wn, &stale).iter().any(|x| x.contains("stale")));
+    }
+
+    #[test]
+    fn too_many_candidates_for_the_capacity_is_a_problem() {
+        let mut wn = lemma_wordnet();
+        for i in 0..LEMMA_CAPACITY {
+            let lemma = format!("lemma{}", (b'a' + i as u8) as char);
+            wn.verb.lemmas.insert(lemma.clone());
+            wn.verb.forms.insert(("crowd".into(), lemma));
+        }
+        let p = problems(&wn, &no_policy());
+        assert!(p
+            .iter()
+            .any(|x| x.contains("\"crowd\"") && x.contains("LEMMA_CAPACITY")));
     }
 }
