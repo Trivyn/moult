@@ -31,9 +31,6 @@ copied into the annotated release-tag notes.
   --lemma` and `--lemma-candidates`, and `tools/nltk-diff/diff.py --lemma`. The
   NLTK differential agrees on 99.49% of word/part-of-speech pairs over 322k
   words, with every difference bucketed in `tools/nltk-diff/DIFFERENCES.md`.
-  Against SCOWL v2 forms (size up to 70), `lemmatize` returns the base for 98.5%
-  of verb forms and 96.9% of adjective forms; nearly all other cases are other
-  valid spellings ("enrolled" gives "enroll", not "enrol").
 - `cargo xtask size` measures a lemma probe and reads the package version
   (it was hard-coded to 0.0.0).
 
