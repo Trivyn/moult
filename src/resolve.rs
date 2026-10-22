@@ -28,7 +28,7 @@ pub(crate) fn is_noun_key(key: &str) -> bool {
     contains(data::NOUNS, key)
 }
 
-fn is_known(key: &str) -> bool {
+pub(crate) fn is_known(key: &str) -> bool {
     is_noun_key(key) || contains(data::NAMES, key)
 }
 
@@ -36,11 +36,11 @@ pub(crate) fn is_invariant(key: &str) -> bool {
     policy::INVARIANT.binary_search(&key).is_ok()
 }
 
-fn is_excluded(lemma: &str, form: &str) -> bool {
+pub(crate) fn is_excluded(lemma: &str, form: &str) -> bool {
     policy::EXCLUDED_FORMS.binary_search(&(lemma, form)).is_ok()
 }
 
-fn is_man_regular(word: &str) -> bool {
+pub(crate) fn is_man_regular(word: &str) -> bool {
     policy::MAN_REGULAR.binary_search(&word).is_ok()
 }
 
@@ -54,6 +54,21 @@ fn is_s_regular(key: &str) -> bool {
 
 fn is_other(key: &str) -> bool {
     contains(data::OTHERS, key)
+}
+
+/// Whether `key` is a word WordNet lists only as another part of speech
+/// ("alas", "perhaps"): in OTHERS, and neither a noun nor a name.
+pub(crate) fn is_other_only(key: &str) -> bool {
+    is_other(key) && !is_known(key)
+}
+
+/// The checked noun a rule reduces the [`is_other_only`] word `key` to, if it
+/// counts: only when `key` is the regular plural of that noun ("bats" of
+/// "bat", but "alas" is not the plural of "ala"). `reduced` is the result of
+/// [`rules::checked_singular`]. Singularize and the noun lemma candidates
+/// share this gate.
+pub(crate) fn other_only_noun(key: &str, reduced: Option<String>) -> Option<String> {
+    reduced.filter(|noun| plural(noun).0 == key)
 }
 
 /// Singularize steps 3 to 7 for the lower-case `key`: the invariant list, the
@@ -95,10 +110,10 @@ pub(crate) fn resolve(key: &str) -> Sing {
     // A word WordNet lists only as another part of speech stays unchanged,
     // unless it is the plural of the noun a checked rule finds ("bats" of
     // "bat", but "alas" is not the plural of "ala").
-    if is_other(key) && !is_known(key) {
-        return match reduced {
-            Some(noun) if plural(&noun).0 == key => Sing::To(Cow::Owned(noun)),
-            _ => Sing::Other,
+    if is_other_only(key) {
+        return match other_only_noun(key, reduced) {
+            Some(noun) => Sing::To(Cow::Owned(noun)),
+            None => Sing::Other,
         };
     }
     if let Some(lemma) = reduced {

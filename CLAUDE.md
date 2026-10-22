@@ -1,15 +1,17 @@
 # moult
 
-English noun inflection (`singularize`, `pluralize`) checked against Open English WordNet. A
+English noun inflection and lemmatization (`singularize`, `pluralize`, `lemmatize`) checked against Open English WordNet. A
 suffix rule's output is accepted only when it is a WordNet noun; irregular forms come from
 WordNet's form list; unchecked rules apply only to words WordNet does not contain. The crate
 docs in `src/lib.rs` define the resolution order — keep them and the code in step.
 
 ## Invariants
 
-1. **Deterministic, dictionary-checked.** No heuristics that guess without the noun check
-   except the final fallback for unknown words, and that fallback stays conservative: leaving
-   a word unchanged beats inventing a non-word.
+1. **Deterministic, dictionary-checked.** No heuristic guesses without a WordNet check against
+   the part of speech being produced (noun for singularize/pluralize/is_noun; the requested
+   part of speech for lemmas/lemmas_for/lemmatize). The only exception is the noun fallback for
+   words WordNet does not contain (opt-in `guess_unknown`), and it stays conservative: leaving
+   a word unchanged beats inventing a non-word. Lemma candidates never come from guessing.
 2. **No dependencies, `no_std` + `alloc`.** The runtime crate pulls in nothing. Tooling (the
    data generator) lives outside the published crate and may use what it needs.
 3. **Data is pinned and committed.** `src/data.rs` is generated from the release pinned in
@@ -21,9 +23,11 @@ docs in `src/lib.rs` define the resolution order — keep them and the code in s
    the package (`include` in `Cargo.toml`) and must describe any change in how the data is
    derived.
 5. **Case is kept.** Lookup is case-insensitive; output keeps the input's case pattern
-   (acronyms stay upper case, capitalised words stay capitalised).
-6. **One word in, one word out.** `singularize`, `pluralize` and `is_noun` take one word;
-   input containing whitespace is returned unchanged. `singularize_phrase` and
+   (acronyms stay upper case, capitalised words stay capitalised, "Made" gives "Make").
+   The one exception: lemma candidates (`Lemma::text`) are lower-case dictionary keys.
+6. **One word in, one word out.** `singularize`, `pluralize`, `is_noun`, `lemmas`,
+   `lemmas_for` and `lemmatize` take one word; input containing whitespace is returned
+   unchanged (`is_noun`: false; `lemmas`: empty). `singularize_phrase` and
    `pluralize_phrase` inflect only the final whitespace-separated word and keep the rest
    byte-for-byte. Splitting identifiers (camelCase, snake_case) and choosing the head of a
    head-initial compound ("attorney general") stay the caller's job.
@@ -85,7 +89,6 @@ docs in `src/lib.rs` define the resolution order — keep them and the code in s
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-cargo test -- --ignored     # the acceptance cases in tests/cases.rs
 ```
 
 CI runs the first three; all must pass before a change is done.

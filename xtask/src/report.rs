@@ -3,9 +3,10 @@
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use crate::classes::{Analysis, Entry};
+use crate::classes::{Analysis, Entry, LemmaEntry};
 use crate::manifest::Manifest;
-use crate::wordnet::Wordnet;
+use crate::pos::LEMMA_CAPACITY;
+use crate::wordnet::{Wordnet, LEMMA_POS};
 
 const SAMPLE: usize = 30;
 
@@ -43,6 +44,19 @@ pub fn render(manifest: &Manifest, wn: &Wordnet, an: &Analysis) -> String {
         "forms (single-token, distinct pairs): {}",
         wn.forms.len()
     );
+    for pos in LEMMA_POS {
+        let t = wn.of(pos);
+        let _ = writeln!(
+            w,
+            "{pos:?}: {} entries, {} lemmas, {} capitalised-only, {} forms (all {}), {} multi-word dropped",
+            t.entries,
+            t.lemmas.len(),
+            t.capitalised.len(),
+            t.forms.len(),
+            t.forms_total,
+            t.multi_word
+        );
+    }
 
     let unclassified = |v: &[Entry]| v.iter().filter(|e| !e.classified).count();
     let _ = writeln!(w, "\n== classes ==  (total / unclassified)");
@@ -62,6 +76,23 @@ pub fn render(manifest: &Manifest, wn: &Wordnet, an: &Analysis) -> String {
     }
     let total = an.b1.len() + an.b2.len() + an.c.len() + an.d.len();
     let _ = writeln!(w, "B1+B2+C+D: {total}");
+    for (label, v) in [("L1", &an.l1), ("L2", &an.l2)] {
+        for pos in LEMMA_POS {
+            let of: Vec<&LemmaEntry> = v.iter().filter(|e| e.pos == pos).collect();
+            let _ = writeln!(
+                w,
+                "{label} {pos:?}: {} / {}",
+                of.len(),
+                of.iter().filter(|e| !e.classified).count()
+            );
+        }
+        let _ = writeln!(
+            w,
+            "{label} total: {} / {}",
+            v.len(),
+            v.iter().filter(|e| !e.classified).count()
+        );
+    }
 
     let _ = writeln!(w, "\n== other counts ==");
     let _ = writeln!(
@@ -91,7 +122,21 @@ pub fn render(manifest: &Manifest, wn: &Wordnet, an: &Analysis) -> String {
         an.plural_only.len()
     );
 
+    let _ = writeln!(
+        w,
+        "max lemma candidates across parts of speech: {} for {:?} (capacity {LEMMA_CAPACITY}, \
+         {} for tables)",
+        an.max_candidates.1,
+        an.max_candidates.0,
+        LEMMA_CAPACITY - 4
+    );
+
     let _ = writeln!(w, "\n== samples ==");
+    for (label, v) in [("L1", &an.l1), ("L2", &an.l2)] {
+        sample(w, label, v, |e| {
+            format!("{} {:?}: {}", e.input, e.pos, e.candidates.join(", "))
+        });
+    }
     sample(w, "class A", &an.a, |(i, s)| format!("{i} -> {s}"));
     sample(
         w,
@@ -136,6 +181,20 @@ pub fn render(manifest: &Manifest, wn: &Wordnet, an: &Analysis) -> String {
                 e.comment
             );
         }
+    }
+
+    let _ = writeln!(w, "\n// LEMMA_CHOICE, class L1");
+    let mut pending: Vec<&LemmaEntry> = an.l1.iter().filter(|e| !e.classified).collect();
+    pending.sort_by(|a, b| (&a.input, a.pos).cmp(&(&b.input, b.pos)));
+    for e in pending {
+        let _ = writeln!(
+            w,
+            "    ({:?}, PartOfSpeech::{:?}, {:?}), // L1: candidates {}",
+            e.input,
+            e.pos,
+            e.suggestion,
+            e.candidates.join(", ")
+        );
     }
 
     let _ = writeln!(w, "\n== stale or invalid policy entries ==");

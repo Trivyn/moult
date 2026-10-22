@@ -1,9 +1,9 @@
 [package]
 name = "moult"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.70"
-description = "English noun inflection (singularize, pluralize) checked against Open English WordNet"
+description = "English noun inflection and lemmatization (singularize, pluralize, lemmatize) checked against Open English WordNet"
 # The code is Apache-2.0; the compiled-in word tables are derived from Open
 # English WordNet and stay under its CC-BY-4.0 (see LICENSE-DATA).
 license = "Apache-2.0 AND CC-BY-4.0"

@@ -354,10 +354,55 @@ MOOSEDev: P8 (2a19ead0…), D9 (5f94288a…), Constraint 8a614569… (supersedes
 ### Release
 - [x] Version 0.2.0, CHANGELOG with Host storage compatibility (pluralize changes for 418
       lemmas), codex review rounds 1–3 (no showstopper left).
-- [ ] Commit, tag, push and publish only when asked.
+- [x] Commit, tag, push and publish only when asked (published 0.2.0, 2026-10-17).
 
 Review fixes: round 1: pluralize leaves a word ending in a non-alphanumeric character
 unchanged ("dock," was "dock,s"); S_REGULAR vs SINGULAR_CHOICE conflict rejected; report
 membership follows the full singular order; docs say "nearly all" old outputs were non-words.
 Round 2: S_REGULAR entries singularize reduces are rejected. Round 3: collins (Tom Collins)
 stays unchanged instead of collinses: declined as within P8's accepted trade-off.
+
+## 0.3.0: lemmatization by part of speech (ratified 2026-10-22)
+
+Spec and decisions in MOOSEDev: Requirement "Spec: lemmatization by part of speech (0.3)",
+D10 (candidates API), P9 (rules, order, LEMMA_CHOICE), D11 (WordNet only; overrides extend).
+Constraint rewordings for invariants 1 and 6 proposed as supersessions (awaiting ratification).
+
+### A. Generator and gate
+- [x] xtask extracts single-word lower-case verb, adjective (+ satellite) and adverb lemmas and
+      their listed forms; capitalised-only lemmas handled as for nouns.
+- [x] Lemma rules (P9) in `src/rules.rs`, shared with the xtask.
+- [x] `report`: per part of speech, lemma and form counts, max candidates, refused classes
+      (listed/self involved) and rule-vs-rule counts. **Gate:** stop if refused is in the thousands.
+- [x] `LEMMA_CHOICE` in `src/policy.rs` with reason comments; stale/invalid rows refused;
+      exclusions extended with a part of speech.
+- [x] Writes `src/verbs.txt`, `src/adjectives.txt`, `src/adverbs.txt` and per-POS form tables in
+      `data.rs`; `gen-data --check` byte-identical.
+      Gate result: L1 130 (79 verb, 47 adjective, 4 adverb), all classified; L2 314 (reported);
+      max candidates 7 (better). Verb stems may be 2 letters (going→go); spelling-variant
+      rows follow WordNet's listed lemma.
+
+### B. Runtime
+- [x] `src/lemma.rs`: `PartOfSpeech`, `Lemma`, `Lemmas` (fixed capacity, no allocation),
+      `lemmas`, `lemmas_for`, `lemmatize`; Inflector methods; builder `.lemma(form, pos, lemma)`.
+- [x] Noun candidates: singularize's checked answer first; `lemmatize(w, Noun) == singularize(w)`.
+
+### C. Tests, docs, release
+- [x] `tests/cases.rs` rows, `tests/lemma.rs`, full-table tests.
+- [x] NLTK differential for pos v/a; SCOWL v2 coverage re-measured (dev-only, not committed).
+      NLTK: 99.49% agreement over 322k words, 3,315 differences all bucketed, 0 bug.
+      SCOWL v2 (size ≤ 70): verbs 98.5% correct (98.8% among candidates), adjectives 96.9%;
+      most misses are other valid spellings (enrolled→enroll vs enrol).
+- [x] `cargo xtask size`; README, crate docs, LICENSE-DATA, CLAUDE.md invariants 1 and 6,
+      expected-package-files, CHANGELOG 0.3.0 with Host storage compatibility, version 0.3.0.
+- [x] codex review rounds 1–3. Round 1 (after Phase B): 5 showstoppers fixed (policy keep
+      words listed as lemmas, one-letter lemmas suppressed, capitalised-only V/A/R dropped —
+      now known but never a rule target per D11, non-noun self override rejected, duplicate
+      noun lemma overrides coalesced) and 2 minor (LICENSE-DATA, allocation wording).
+      Round 2: 1 showstopper (OTHERS-only words offered rule nouns resolve rejects: alas→ala;
+      gate now shared with resolve and mirrored in the generator) and 2 minor (e-restoring
+      rules need a 2-letter stem, so bing/bed no longer reach be; nltk --check covers the
+      lemma TSV, buckets require evidence). Round 3: no showstopper; 2 doc wordings fixed.
+- [x] Commit and PR (2026-10-22). Tag and publish only when asked, after merge.
+- Size (D12, user decision): no cargo feature. Noun-only binary unchanged (0.61 MB); +0.50 MB
+  when lemmatize/lemmas are used; .crate 0.38 MB.

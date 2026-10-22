@@ -10,9 +10,12 @@ returns the shortest candidate that is in WordNet, with no policy.
 From the repository root (the first run downloads WordNet 3.0 into the
 git-ignored `tools/nltk-diff/.cache/`):
 
-    uv run --with nltk==3.9.2 python -I tools/nltk-diff/diff.py            # rewrite expected.tsv, expected-guess.tsv and this file
+    uv run --with nltk==3.9.2 python -I tools/nltk-diff/diff.py            # rewrite expected.tsv, expected-guess.tsv, expected-lemma.tsv and this file
     uv run --with nltk==3.9.2 python -I tools/nltk-diff/diff.py --guess    # rewrite only expected-guess.tsv
-    uv run --with nltk==3.9.2 python -I tools/nltk-diff/diff.py --check    # fail if either expected file would change
+    uv run --with nltk==3.9.2 python -I tools/nltk-diff/diff.py --check    # fail if any of the three expected files would change
+    uv run --with nltk==3.9.2 python -I tools/nltk-diff/diff.py --guess --check
+    uv run --with nltk==3.9.2 python -I tools/nltk-diff/diff.py --lemma    # rewrite only expected-lemma.tsv (verbs and adjectives)
+    uv run --with nltk==3.9.2 python -I tools/nltk-diff/diff.py --lemma --check
 
 moult is called through `cargo xtask-inflect` (words on stdin, TSV on stdout),
 and with `--guess` for the opt-in mode. `expected.tsv` is the default mode, the
@@ -575,3 +578,161 @@ Still suspected, and not fixed (the opt-in is best-effort for words WordNet lack
   in one.
 - `min-stem` blocks reductions to real two-letter nouns ("ads", "ids", "pis")
   because of the 3-letter floor: a deliberate cost of the floor.
+
+## Lemma mode (`--lemma`)
+
+moult's `lemmatize(w, Verb)` and `lemmatize(w, Adjective)` (`cargo xtask-inflect --lemma`) against `WordNetLemmatizer().lemmatize(w, "v")` and `(w, "a")`. NLTK returns the shortest of morphy's lemmas, or the word when it finds none. Each word is compared once per part of speech; a disagreement is one row of `expected-lemma.tsv` (`word, pos, moult, nltk, bucket`, `v` or `a`). Adverbs are not compared: NLTK's morphy has no adverb rules. The nouns are `singularize` and are covered above.
+
+| source | words |
+|---|---|
+| src/verbs.txt | 8728 |
+| src/adjectives.txt | 20318 |
+| VERB_FORMS forms | 1863 |
+| ADJECTIVE_FORMS forms | 1190 |
+| naive inflections of each verb lemma (-s/-es, -ed, -ing) | 35064 |
+| naive inflections of each adjective lemma (-er, -est) | 50654 |
+| /usr/share/dict/words, lower-cased | 234456 |
+| union, lower-case words compared | 322313 |
+
+The naive inflections add the regular -s/-es, -ed, -ing (and -er, -est) forms of every lemma, dropping a final e, changing y to i, and doubling the final consonant of a one-syllable consonant-vowel-consonant stem. Many are non-words; they probe rule behaviour, not usage. The word list includes `/usr/share/dict/words` (sha256 `be41ad97963bf8dabedd5871d5d691596175269d540956b0f9965a885c2bbab9`), recorded in `expected-lemma.tsv` as for the noun modes.
+
+Agreement: 641312 / 644626 = 99.49% of word and part-of-speech pairs. Disagreements: 3314 (verbs 637, adjectives 2677).
+
+| bucket | verbs | adjectives | total |
+|---|---|---|---|
+| capitalised | 3 | 9 | 12 |
+| curated | 28 | 4 | 32 |
+| data-version | 224 | 256 | 480 |
+| order | 237 | 46 | 283 |
+| min-stem | 0 | 268 | 268 |
+| nltk-exception | 9 | 111 | 120 |
+| extra-rule | 136 | 1983 | 2119 |
+| bug | 0 | 0 | 0 |
+
+The rules apply in this order (`bucket()` in `lemma_diff`): capitalised, curated, data-version, order, min-stem, nltk-exception, extra-rule; the first match wins and `bug` is the residue.
+
+#### capitalised (12)
+
+One of the word, moult's answer or NLTK's answer is a lemma written only with capitals ("french", "irish", "romance" as a name). moult knows such a lemma and lists it for itself, but no suffix rule ever reaches it; NLTK lower-cases its index and strips freely.
+
+| word | pos | moult | nltk |
+|---|---|---|---|
+| dutcher | a | dutcher | dutch |
+| frenched | v | frenched | french |
+| frenching | v | frenching | french |
+| germaner | a | germane | german |
+| germanest | a | germane | german |
+| gied | v | gied | gi |
+| hollywooder | a | hollywooder | hollywood |
+| irisher | a | irisher | irish |
+| romancer | a | romancer | romance |
+| scottisher | a | scottisher | scottish |
+
+#### curated (32)
+
+The form is in LEMMA_CHOICE (src/policy.rs): a form with more than one reading where the crate states the answer ("appalled" -> "appall", "fell" -> "fall", "outer" -> "outer", "best" -> "good"). NLTK has no such choice and takes the shortest candidate or its exception list.
+
+| word | pos | moult | nltk |
+|---|---|---|---|
+| best | a | good | best |
+| bore | v | bear | bore |
+| caddies | v | caddie | caddy |
+| caddying | v | caddie | caddy |
+| enrolling | v | enroll | enrol |
+| feed | v | feed | fee |
+| fell | v | fall | fell |
+| fulfilled | v | fulfill | fulfil |
+| lesser | a | lesser | less |
+| slew | v | slay | slew |
+
+#### data-version (480)
+
+The word or an answer is a lemma in only one dictionary: Open English WordNet 2025 (moult) versus Princeton WordNet 3.0 (NLTK). Mostly rule results on words only OEWN has ("twerk", "favorite"), or the reverse. Neither is wrong; the dictionaries differ.
+
+| word | pos | moult | nltk |
+|---|---|---|---|
+| cellulosicest | a | cellulosic | cellulosicest |
+| chokingest | a | choking | chokingest |
+| cumswallowed | v | cumswallow | cumswallowed |
+| flappier | a | flappy | flappier |
+| re-elects | v | re-elect | re-elects |
+| snapchating | v | snapchat | snapchating |
+| spirallingest | a | spiralling | spirallingest |
+| unasked-forer | a | unasked-for | unasked-forer |
+| veganer | a | vegan | veganer |
+| veganest | a | vegan | veganest |
+
+#### order (283)
+
+Both answers are lemmas of the word (moult lists NLTK's among its candidates, or both are PWN lemmas and NLTK's is shorter). NLTK returns the shortest of morphy's lemmas ("hating" -> "hat"); moult follows its stated order, the -e restoring rule before the bare stem ("hating" -> "hate"), and a word that is itself a lemma before a shorter stem ("canvass").
+
+| word | pos | moult | nltk |
+|---|---|---|---|
+| coning | v | cone | con |
+| jibed | v | jibe | jib |
+| plated | v | plate | plat |
+| premieres | v | premiere | premier |
+| raping | v | rape | rap |
+| slopes | v | slope | slop |
+| sniping | v | snipe | snip |
+| striped | v | stripe | strip |
+| stymied | v | stymy | stymie |
+| wining | v | wine | win |
+
+#### min-stem (268)
+
+NLTK reaches a lemma of one or two characters through a rule ("98est" -> "98", "cest" -> "c"); moult's adjective rules never emit fewer than three characters. These are spurious readings of non-words.
+
+| word | pos | moult | nltk |
+|---|---|---|---|
+| 0er | a | 0er | 0 |
+| 12est | a | 12est | 12 |
+| 23est | a | 23est | 23 |
+| 2est | a | 2est | 2 |
+| 65er | a | 65er | 65 |
+| 69est | a | 69est | 69 |
+| 86er | a | 86er | 86 |
+| cder | a | cder | cd |
+| upest | a | upest | up |
+| xxer | a | xxer | xx |
+
+#### nltk-exception (120)
+
+The word is on NLTK's exception list for that part of speech (many adjectives map to themselves, e.g. "archer"), which stops morphy applying its rules, while moult's rules find a lemma of at least three characters ("co-opted" -> "co-opt", "archer" -> "arch"). The exception-list entry is the evidence; a shorter answer is not accepted here and lands in bug. The differences are in moult's favour in the sense that the stem is a lemma of the part of speech.
+
+| word | pos | moult | nltk |
+|---|---|---|---|
+| boner | a | bone | boner |
+| eastsider | a | eastside | eastsider |
+| first-stringer | a | first-string | first-stringer |
+| fore-and-after | a | fore-and-aft | fore-and-after |
+| left-hander | a | left-hand | left-hander |
+| paster | a | past | paster |
+| salter | a | salt | salter |
+| serer | a | sere | serer |
+| taxis | v | taxi | taxis |
+| trimer | a | trim | trimer |
+
+#### extra-rule (2119)
+
+moult's rules that morphy lacks find a lemma and NLTK finds none: -ied ("autopsied" -> "autopsy"), -ying ("retying" -> "retie"), a doubled final consonant ("stopped" -> "stop", "bigger" -> "big"), and -ier / -iest for adjectives ("happier" -> "happy"). Most rows are adjectives because the word list holds the naive -ier / -iest of every -y adjective, many of them non-words ("accessarier"): the rule is checked against the dictionary, the generator is not.
+
+| word | pos | moult | nltk |
+|---|---|---|---|
+| chylifactoriest | a | chylifactory | chylifactoriest |
+| complimentarier | a | complimentary | complimentarier |
+| cruddiest | a | cruddy | cruddiest |
+| evolutionariest | a | evolutionary | evolutionariest |
+| palpatorier | a | palpatory | palpatorier |
+| persnicketier | a | persnickety | persnicketier |
+| propitiatorier | a | propitiatory | propitiatorier |
+| touchy-feeliest | a | touchy-feely | touchy-feeliest |
+| user-friendlier | a | user-friendly | user-friendlier |
+| wobblier | a | wobbly | wobblier |
+
+#### bug (0)
+
+Unexplained residue: every row, none judged intentional.
+
+| word | pos | moult | nltk |
+|---|---|---|---|

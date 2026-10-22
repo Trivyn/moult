@@ -5,18 +5,37 @@ WordNet project (https://github.com/globalwordnet/english-wordnet).
 Open English WordNet is licensed under the Creative Commons Attribution 4.0
 International License (CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
 
-Changes made: the following were extracted from the WN-LMF XML release:
-single-token noun lemmas, lower-cased (src/nouns.txt); lemmas containing a
-space were dropped; lemmas written only with capital letters were kept in a
-separate list of known words (src/names.txt); and the irregular noun forms,
-as (form, lemma) pairs, unfiltered; and single-token lemmas of the other
-parts of speech other than noun (verbs, adjectives, adverbs; WordNet files
-interjections such as "alas" as adverbs) that end in "s", lower-cased, kept
-in src/others.txt and used only to recognise words WordNet lists as non-nouns.
-Everything is written out sorted by byte order to src/data.rs, src/nouns.txt,
-src/names.txt and src/others.txt. No other WordNet data
-is used. The hand-written policy lists in src/policy.rs are not WordNet data;
-they are crate source under the Apache-2.0 licence.
+Changes made: the following were extracted from the WN-LMF XML release, and
+nothing else is used. Lemmas and forms are lower-cased, lemmas containing a
+space are dropped, and every list is sorted by byte order and de-duplicated.
+
+Nouns:
+- single-token noun lemmas written in lower case (src/nouns.txt);
+- single-token noun lemmas written only with capital letters, kept as known
+  words that no rule produces (src/names.txt);
+- the noun forms of single-token noun entries, as (form, lemma) pairs,
+  unfiltered (FORM_TO_LEMMA and its index LEMMA_TO_PLURAL in src/data.rs).
+
+Other parts of speech:
+- single-token lemmas of verbs, of adjectives (adjective satellites included)
+  and of adverbs that end in "s", and are in neither the noun nor the name
+  list, used only to recognise words WordNet lists as non-nouns (WordNet files
+  interjections such as "alas" as adverbs) (src/others.txt);
+- the single-token verb, adjective and adverb lemmas written entirely in lower
+  case, one list per part of speech (src/verbs.txt, src/adjectives.txt,
+  src/adverbs.txt);
+- the single-token lemmas of those parts of speech that WordNet writes only
+  with capital letters, and not also in lower case in the same part of speech,
+  one list per part of speech (src/verb_names.txt, src/adjective_names.txt,
+  src/adverb_names.txt);
+- the single-token forms of the entries of those lemmas, as (form, lemma)
+  pairs, one table per part of speech (VERB_FORMS, ADJECTIVE_FORMS and
+  ADVERB_FORMS in src/data.rs), from which the pairs listed in LEMMA_EXCLUDED
+  of src/policy.rs are removed.
+
+The hand-written policy lists in src/policy.rs, including LEMMA_CHOICE and
+LEMMA_EXCLUDED, are not WordNet data; they are crate source under the
+Apache-2.0 licence.
 
 Open English WordNet is derived from Princeton WordNet 3.0:
 

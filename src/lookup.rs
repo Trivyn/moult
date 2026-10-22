@@ -2,13 +2,18 @@
 
 use crate::data;
 
-/// Whether `word` is one of the lines of `table`: lower-case words, one per
-/// line, each `\n`-terminated, sorted by byte order.
+/// Whether `word` is one of the lines of `table` (see [`find`]).
+pub(crate) fn contains(table: &str, word: &str) -> bool {
+    find(table, word).is_some()
+}
+
+/// The line of `table` equal to `word`, as a slice of the table: lower-case
+/// words, one per line, each `\n`-terminated, sorted by byte order.
 ///
 /// A binary search over byte offsets. The search range always starts and ends
 /// on a line boundary; each probe walks back from the middle to the start of
 /// its line, reads the line, and narrows the range.
-pub(crate) fn contains(table: &str, word: &str) -> bool {
+pub(crate) fn find<'t>(table: &'t str, word: &str) -> Option<&'t str> {
     let t = table.as_bytes();
     let w = word.as_bytes();
     let (mut lo, mut hi) = (0, t.len());
@@ -23,12 +28,12 @@ pub(crate) fn contains(table: &str, word: &str) -> bool {
             .position(|&b| b == b'\n')
             .map_or(t.len(), |i| start + i);
         match t[start..end].cmp(w) {
-            core::cmp::Ordering::Equal => return true,
+            core::cmp::Ordering::Equal => return Some(&table[start..end]),
             core::cmp::Ordering::Less => lo = end + 1,
             core::cmp::Ordering::Greater => hi = start,
         }
     }
-    false
+    None
 }
 
 /// The rows of `table`, sorted by first element, whose first element is `key`.

@@ -12,6 +12,8 @@
 //! an ordinary modern text means; where no reading is clearly right, leave
 //! the word unchanged rather than invent an obscure or wrong one.
 
+use crate::pos::PartOfSpeech;
+
 /// Nouns returned unchanged in both directions: zero plurals ("sheep") and
 /// nouns whose `-s` form should not be stripped ("news", "data"). Each must
 /// be a lower-case WordNet noun. A word belongs here only when its `-s` form is
@@ -540,4 +542,156 @@ pub(crate) static MAN_REGULAR: &[&str] = &[
     "soman",         // the nerve agent
     "talisman",      // charm; Arabic
     "zaman",         // the rain tree
+];
+
+/// `(form, part of speech, lemma)`: the lemma that comes first among the
+/// candidates of `form` as that part of speech. A row settles an ambiguity the
+/// generator reports as L1 (a listed form, or the word itself, competing with
+/// another reading) and may also settle an L2 one (rules only). Sorted by
+/// `(form, part of speech)`; the part of speech is never `Noun`, whose
+/// answers come from the noun lists above. The lemma is one of the form's
+/// candidates. Each entry's comment starts with its class tag.
+pub(crate) static LEMMA_CHOICE: &[(&str, PartOfSpeech, &str)] = &[
+    // Sorted by byte order of the form, then part of speech (verb, adjective,
+    // adverb). Groups: past tenses and participles of irregular verbs; spelling
+    // variants; comparatives and superlatives; words the rules misread.
+    ("abye", PartOfSpeech::Verb, "abye"), // L1: spelling variant of aby; a lemma stays itself
+    ("after", PartOfSpeech::Adjective, "after"), // L1: lemma in its own right (the after part); not a comparative of aft
+    ("appalled", PartOfSpeech::Verb, "appall"),  // L1: US and common spelling; appal is the variant
+    ("appalling", PartOfSpeech::Verb, "appall"), // L1: US and common spelling; appal is the variant
+    ("best", PartOfSpeech::Adjective, "good"), // L1: superlative of good; the adjective best (best of all) second
+    ("best", PartOfSpeech::Adverb, "well"), // L1: superlative of well; best as its own adverb second
+    ("better", PartOfSpeech::Adjective, "good"), // L1: comparative of good; well (in good health) and better itself after
+    ("better", PartOfSpeech::Adverb, "well"),    // L1: comparative of well
+    ("bigger", PartOfSpeech::Adjective, "big"),  // L1: comparative of big
+    ("bittier", PartOfSpeech::Adjective, "bitty"), // L1: bitty is the usual spelling; bittie variant
+    ("bittiest", PartOfSpeech::Adjective, "bitty"), // L1: bitty is the usual spelling; bittie variant
+    ("bonnier", PartOfSpeech::Adjective, "bonny"), // L1: bonny is the usual spelling; bonnie variant
+    ("bonniest", PartOfSpeech::Adjective, "bonny"), // L1: bonny is the usual spelling; bonnie variant
+    ("bore", PartOfSpeech::Verb, "bear"), // L1: past of bear (bore a child, bore the cost); bore (tire) second
+    ("bound", PartOfSpeech::Verb, "bind"), // L1: past of bind; bound (leap) rare as a verb
+    ("burred", PartOfSpeech::Verb, "burr"), // L1: burr is the common verb (burred r); bur (remove burs) rare
+    ("burring", PartOfSpeech::Verb, "burr"), // L1: burr is the common verb (burred r); bur (remove burs) rare
+    ("caddied", PartOfSpeech::Verb, "caddie"), // L1: caddie is the golf spelling; caddy variant
+    ("caddies", PartOfSpeech::Verb, "caddie"), // L1: caddie is the golf spelling; caddy variant
+    ("caddying", PartOfSpeech::Verb, "caddie"), // L1: caddie is the golf spelling; caddy variant
+    ("cagier", PartOfSpeech::Adjective, "cagey"), // L1: cagey is the more common spelling; cagy variant
+    ("cagiest", PartOfSpeech::Adjective, "cagey"), // L1: cagey is the more common spelling; cagy variant
+    ("chevied", PartOfSpeech::Verb, "chivy"), // L1: chevy, chivy, chivvy are variants; WordNet lists chivy
+    ("chevies", PartOfSpeech::Verb, "chivy"), // L1: chevy, chivy, chivvy are variants; WordNet lists chivy
+    ("chevying", PartOfSpeech::Verb, "chivy"), // L1: chevy, chivy, chivvy are variants; WordNet lists chivy
+    ("chivvied", PartOfSpeech::Verb, "chivy"), // L1: spelling variant; WordNet lists chivy
+    ("chivvies", PartOfSpeech::Verb, "chivy"), // L1: spelling variant; WordNet lists chivy
+    ("chivvying", PartOfSpeech::Verb, "chivy"), // L1: spelling variant; WordNet lists chivy
+    ("coiffed", PartOfSpeech::Verb, "coif"),   // L1: coif is the verb; coiffe is a variant
+    ("coiffing", PartOfSpeech::Verb, "coif"),  // L1: coif is the verb; coiffe is a variant
+    ("conned", PartOfSpeech::Verb, "con"),     // L1: con (swindle) common; conn (steer) rare
+    ("conning", PartOfSpeech::Verb, "con"),    // L1: con (swindle) common; conn (steer) rare
+    ("coquetted", PartOfSpeech::Verb, "coquet"), // L1: WordNet lists coquet; coquette is the variant
+    ("coquetting", PartOfSpeech::Verb, "coquet"), // L1: WordNet lists coquet; coquette is the variant
+    ("cuter", PartOfSpeech::Adjective, "cute"),   // L1: comparative of cute, not cut plus er
+    ("distilled", PartOfSpeech::Verb, "distill"), // L1: US spelling, doubled l as in the input; distil is British
+    ("distilling", PartOfSpeech::Verb, "distill"), // L1: US spelling, doubled l as in the input; distil is British
+    ("dopier", PartOfSpeech::Adjective, "dopey"), // L1: dopey is the more common spelling; dopy variant
+    ("dopiest", PartOfSpeech::Adjective, "dopey"), // L1: dopey is the more common spelling; dopy variant
+    ("dying", PartOfSpeech::Verb, "die"),          // L1: gerund of die; dye makes dyeing
+    ("earlier", PartOfSpeech::Adjective, "early"), // L1: comparative of early; earlier as a lemma second
+    ("earliest", PartOfSpeech::Adjective, "early"), // L1: superlative of early; earliest as a lemma second
+    ("eerier", PartOfSpeech::Adjective, "eerie"),   // L1: eerie is the usual spelling; eery variant
+    ("eeriest", PartOfSpeech::Adjective, "eerie"),  // L1: eerie is the usual spelling; eery variant
+    ("enrolled", PartOfSpeech::Verb, "enroll"), // L1: US spelling, doubled l as in the input; enrol is British
+    ("enrolling", PartOfSpeech::Verb, "enroll"), // L1: US spelling, doubled l as in the input; enrol is British
+    ("enthralled", PartOfSpeech::Verb, "enthrall"), // L1: US spelling, doubled l as in the input; enthral is British
+    ("enthralling", PartOfSpeech::Verb, "enthrall"), // L1: US spelling, doubled l as in the input; enthral is British
+    ("farther", PartOfSpeech::Adverb, "far"),        // L1: comparative of far
+    ("feed", PartOfSpeech::Verb, "feed"),            // L1: a lemma; fee plus ed is spurious
+    ("fell", PartOfSpeech::Verb, "fall"),            // L1: past of fall; fell (cut down) rare
+    ("felt", PartOfSpeech::Verb, "feel"),            // L1: past of feel; felt (make felt) rare
+    ("fewer", PartOfSpeech::Adjective, "few"),       // L1: comparative of few
+    ("fewest", PartOfSpeech::Adjective, "few"),      // L1: superlative of few
+    ("finer", PartOfSpeech::Adjective, "fine"),      // L1: comparative of fine
+    ("fitter", PartOfSpeech::Adjective, "fit"),      // L1: comparative of fit
+    ("found", PartOfSpeech::Verb, "find"),           // L1: past of find; found (establish) second
+    ("fulfilled", PartOfSpeech::Verb, "fulfill"), // L1: US spelling, doubled l as in the input; fulfil is British
+    ("fulfilling", PartOfSpeech::Verb, "fulfill"), // L1: US spelling, doubled l as in the input; fulfil is British
+    ("further", PartOfSpeech::Adverb, "far"), // L1: comparative of far; further as its own adverb second
+    ("greater", PartOfSpeech::Adjective, "great"), // L1: comparative of great
+    ("greatest", PartOfSpeech::Adjective, "great"), // L1: superlative of great
+    ("ground", PartOfSpeech::Verb, "grind"), // L1: past of grind (ground coffee); the base verb ground is rare
+    ("healthier", PartOfSpeech::Adjective, "healthy"), // L1: comparative of healthy
+    ("higher", PartOfSpeech::Adjective, "high"), // L1: comparative of high
+    ("hinder", PartOfSpeech::Adjective, "hinder"), // L1: lemma in its own right (the hinder part); not a comparative of hind
+    ("homier", PartOfSpeech::Adjective, "homey"), // L1: homey is the more common spelling; homy variant
+    ("homiest", PartOfSpeech::Adjective, "homey"), // L1: homey is the more common spelling; homy variant
+    ("installed", PartOfSpeech::Verb, "install"),  // L1: install; instal is the variant
+    ("installing", PartOfSpeech::Verb, "install"), // L1: install; instal is the variant
+    ("jigged", PartOfSpeech::Verb, "jig"),         // L1: jig; jigg is a variant
+    ("jigging", PartOfSpeech::Verb, "jig"),        // L1: jig; jigg is a variant
+    ("kookier", PartOfSpeech::Adjective, "kooky"), // L1: kooky is the usual spelling; kookie variant
+    ("kookiest", PartOfSpeech::Adjective, "kooky"), // L1: kooky is the usual spelling; kookie variant
+    ("laden", PartOfSpeech::Verb, "lade"),          // L1: participle of lade
+    ("larger", PartOfSpeech::Adjective, "large"),   // L1: comparative of large
+    ("later", PartOfSpeech::Adjective, "late"),     // L1: comparative of late
+    ("latest", PartOfSpeech::Adjective, "late"),    // L1: superlative of late
+    ("lay", PartOfSpeech::Verb, "lay"), // L1: base verb (lay the table) outweighs lay as past of lie
+    ("lesser", PartOfSpeech::Adjective, "lesser"), // L1: lemma in its own right (the lesser evil); not a plain comparative
+    ("littler", PartOfSpeech::Adjective, "little"), // L1: comparative of little
+    ("liver", PartOfSpeech::Adjective, "liver"), // L1: spurious comparative of live; keep the word
+    ("lower", PartOfSpeech::Adjective, "low"),   // L1: comparative of low
+    ("lowest", PartOfSpeech::Adjective, "low"),  // L1: superlative of low
+    ("matted", PartOfSpeech::Verb, "mat"),       // L1: mat; matte (give a dull finish) rare
+    ("matting", PartOfSpeech::Verb, "mat"),      // L1: mat; matte (give a dull finish) rare
+    ("modest", PartOfSpeech::Adjective, "modest"), // L1: spurious superlative of mod; keep the word
+    ("netted", PartOfSpeech::Verb, "net"),       // L1: net; nett is a variant
+    ("netting", PartOfSpeech::Verb, "net"),      // L1: net; nett is a variant
+    ("older", PartOfSpeech::Adjective, "old"),   // L1: comparative of old
+    ("outer", PartOfSpeech::Adjective, "outer"), // L1: lemma in its own right (outer layer); not a comparative of out
+    ("overlay", PartOfSpeech::Verb, "overlay"), // L1: base verb (overlay a map) outweighs overlay as past of overlie
+    ("palled", PartOfSpeech::Verb, "pall"),     // L1: pall (grow dull) common; pal (pal up) rare
+    ("palling", PartOfSpeech::Verb, "pall"),    // L1: pall (grow dull) common; pal (pal up) rare
+    ("programmed", PartOfSpeech::Verb, "program"), // L1: program; programme is the British noun spelling
+    ("programmes", PartOfSpeech::Verb, "program"), // L1: spelling variant; WordNet lists program
+    ("programming", PartOfSpeech::Verb, "program"), // L1: program; programme is the British noun spelling
+    ("putting", PartOfSpeech::Verb, "put"),         // L1: gerund of put; putt (golf) second
+    ("rent", PartOfSpeech::Verb, "rent"), // L1: base verb rent outweighs rent as past of rend
+    ("rove", PartOfSpeech::Verb, "rove"), // L1: base verb rove (wander); rove as past of reeve is nautical
+    ("saw", PartOfSpeech::Verb, "see"),   // L1: past of see; saw (cut with a saw) second
+    ("seed", PartOfSpeech::Verb, "seed"), // L1: a lemma; see plus d is spurious
+    ("shellacked", PartOfSpeech::Verb, "shellac"), // L1: shellac; shellack is a variant
+    ("shellacking", PartOfSpeech::Verb, "shellac"), // L1: shellac; shellack is a variant
+    ("sicked", PartOfSpeech::Verb, "sic"), // L1: sic (set a dog on); sick rare as a verb
+    ("sicking", PartOfSpeech::Verb, "sic"), // L1: sic (set a dog on); sick rare as a verb
+    ("singing", PartOfSpeech::Verb, "sing"), // L1: gerund of sing; singe makes singeing
+    ("slew", PartOfSpeech::Verb, "slay"), // L1: past of slay; slew (turn) rare
+    ("smaller", PartOfSpeech::Adjective, "small"), // L1: comparative of small
+    ("smelt", PartOfSpeech::Verb, "smell"), // L1: past of smell (British); smelt (ore) is the other reading
+    ("sonsier", PartOfSpeech::Adjective, "sonsy"), // L1: sonsy is the usual spelling; sonsie variant
+    ("sonsiest", PartOfSpeech::Adjective, "sonsy"), // L1: sonsy is the usual spelling; sonsie variant
+    ("spat", PartOfSpeech::Verb, "spit"), // L1: past of spit; spat (quarrel) rare as a verb
+    ("stymying", PartOfSpeech::Verb, "stymie"), // L1: stymie is the usual spelling; stymy variant
+    ("summons", PartOfSpeech::Verb, "summon"), // L1: third person of summon; summons as a verb is rare
+    ("swopped", PartOfSpeech::Verb, "swap"),   // L1: swap; swop is the variant
+    ("swopping", PartOfSpeech::Verb, "swap"),  // L1: swap; swop is the variant
+    ("swops", PartOfSpeech::Verb, "swap"),     // L1: swap; swop is the variant
+    ("underlay", PartOfSpeech::Verb, "underlay"), // L1: base verb outweighs underlay as past of underlie
+    ("weed", PartOfSpeech::Verb, "weed"),         // L1: a lemma; wee plus d is spurious
+    ("whirred", PartOfSpeech::Verb, "whir"),      // L1: spelling variant; WordNet lists whir
+    ("whirring", PartOfSpeech::Verb, "whir"),     // L1: spelling variant; WordNet lists whir
+    ("whizzed", PartOfSpeech::Verb, "whiz"),      // L1: spelling variant; WordNet lists whiz
+    ("whizzes", PartOfSpeech::Verb, "whiz"),      // L1: spelling variant; WordNet lists whiz
+    ("whizzing", PartOfSpeech::Verb, "whiz"),     // L1: spelling variant; WordNet lists whiz
+    ("worse", PartOfSpeech::Adjective, "bad"),    // L1: comparative of bad
+    ("worst", PartOfSpeech::Adjective, "bad"),    // L1: superlative of bad
+    ("wound", PartOfSpeech::Verb, "wind"), // L1: past of wind; wound (injure) rare as a base verb
+    ("younger", PartOfSpeech::Adjective, "young"), // L1: comparative of young
+];
+
+/// `(form, part of speech, lemma)` WordNet form pairs dropped from the lemma
+/// form tables: typos, and forms that are not inflections of the lemma. Sorted
+/// by `(form, part of speech, lemma)`; the part of speech is never `Noun`
+/// (see `EXCLUDED_FORMS` for nouns, whose pairs read `(lemma, form)`).
+#[allow(dead_code)] // the generator applies it; the crate reads it only in table tests
+pub(crate) static LEMMA_EXCLUDED: &[(&str, PartOfSpeech, &str)] = &[
+    // Sorted by byte order of the form, then part of speech, then lemma.
+    ("overflown", PartOfSpeech::Verb, "overflow"), // participle of overfly only; overflow makes overflowed
 ];

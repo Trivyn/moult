@@ -28,4 +28,6 @@ Mirror of MOOSEDev Lesson records (the graph is canonical).
   progress, so the user had to ask.
 - **Rule:** run non-interactive CLIs in the background with `< /dev/null`, and check the output
   shows real progress shortly after launch instead of only waiting for the exit notification.
+  Judge progress by the output growing past the banner: codex prints "Reading additional input
+  from stdin..." as its first line even when stdin is closed, so that line alone is not a hang.
 - **Origin:** user correction, moult 0.2.0 review round 1 ("are they done, it's been hours").

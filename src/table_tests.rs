@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use std::string::String;
 
 use crate::lookup::contains;
-use crate::{data, pluralize, policy, singularize};
+use crate::{data, pluralize, policy, singularize, PartOfSpeech};
 
 fn nouns() -> impl Iterator<Item = &'static str> {
     data::NOUNS.lines()
@@ -453,4 +453,259 @@ fn pluralize_leaves_plural_shaped_nouns_alone() {
     for (word, want) in [("bus", "buses"), ("status", "statuses"), ("iris", "irises")] {
         assert_eq!(pluralize(word), want);
     }
+}
+
+type LemmaTables = [(
+    PartOfSpeech,
+    &'static str,
+    &'static str,
+    &'static [(&'static str, &'static str)],
+); 3];
+
+/// Per part of speech: the lower-case lemmas, the capitalised-only lemmas and
+/// the listed forms.
+fn lemma_pos() -> LemmaTables {
+    [
+        (
+            PartOfSpeech::Verb,
+            data::VERBS,
+            data::VERB_NAMES,
+            data::VERB_FORMS,
+        ),
+        (
+            PartOfSpeech::Adjective,
+            data::ADJECTIVES,
+            data::ADJECTIVE_NAMES,
+            data::ADJECTIVE_FORMS,
+        ),
+        (
+            PartOfSpeech::Adverb,
+            data::ADVERBS,
+            data::ADVERB_NAMES,
+            data::ADVERB_FORMS,
+        ),
+    ]
+}
+
+/// Whether `text` is a dictionary lemma of `pos`: an entry of the part of
+/// speech's list or of its capitalised-only list; for nouns, of NOUNS or NAMES.
+fn is_lemma_of(text: &str, pos: PartOfSpeech) -> bool {
+    match pos {
+        PartOfSpeech::Verb => contains(data::VERBS, text) || contains(data::VERB_NAMES, text),
+        PartOfSpeech::Adjective => {
+            contains(data::ADJECTIVES, text) || contains(data::ADJECTIVE_NAMES, text)
+        }
+        PartOfSpeech::Adverb => contains(data::ADVERBS, text) || contains(data::ADVERB_NAMES, text),
+        _ => contains(data::NOUNS, text) || contains(data::NAMES, text),
+    }
+}
+
+/// Every word the lemma tests probe for `pos`: its lemmas and listed forms.
+fn lemma_inputs(pos: PartOfSpeech) -> Vec<&'static str> {
+    let mut out: Vec<&str> = Vec::new();
+    for (p, words, names, forms) in lemma_pos() {
+        if p == pos {
+            out.extend(words.lines());
+            out.extend(names.lines());
+            out.extend(forms.iter().map(|&(form, _)| form));
+        }
+    }
+    if pos == PartOfSpeech::Noun {
+        out.extend(data::NOUNS.lines());
+        out.extend(data::NAMES.lines());
+        out.extend(data::FORM_TO_LEMMA.iter().map(|&(form, _)| form));
+        out.extend(policy::INVARIANT);
+        out.extend(policy::SINGULAR_CHOICE.iter().map(|&(k, _)| k));
+    }
+    out
+}
+
+const ALL_POS: [PartOfSpeech; 4] = [
+    PartOfSpeech::Noun,
+    PartOfSpeech::Verb,
+    PartOfSpeech::Adjective,
+    PartOfSpeech::Adverb,
+];
+
+#[test]
+fn lemma_candidates_are_lemmas_of_their_part_of_speech() {
+    let mut bad: Vec<String> = Vec::new();
+    let mut most = 0;
+    for pos in ALL_POS {
+        for w in lemma_inputs(pos) {
+            let all = crate::lemmas(w);
+            most = most.max(all.len());
+            for l in crate::lemmas_for(w, pos) {
+                if l.pos != pos || !is_lemma_of(l.text, pos) {
+                    bad.push(std::format!("{w}: {} is no {pos:?} lemma", l.text));
+                }
+            }
+        }
+    }
+    assert!(bad.is_empty(), "bad candidates:\n{}", bad.join("\n"));
+    assert!(
+        most <= crate::pos::LEMMA_CAPACITY - 4,
+        "{most} table-derived candidates"
+    );
+}
+
+#[test]
+fn every_lemma_lists_itself_and_lemmatizes_to_itself_when_first() {
+    let mut bad: Vec<String> = Vec::new();
+    for (pos, words, names, _) in lemma_pos() {
+        for w in words.lines().chain(names.lines()) {
+            let found = crate::lemmas_for(w, pos);
+            if !found.clone().any(|l| l.text == w) {
+                bad.push(std::format!("{w} ({pos:?}) does not list itself"));
+            } else if found.first().map(|l| l.text) == Some(w) && crate::lemmatize(w, pos) != w {
+                bad.push(std::format!("{w} ({pos:?}) lemmatizes away from itself"));
+            }
+        }
+    }
+    assert!(bad.is_empty(), "self lemmas:\n{}", bad.join("\n"));
+}
+
+#[test]
+fn first_noun_candidate_is_singularizes_checked_answer() {
+    let mut bad: Vec<String> = Vec::new();
+    for w in lemma_inputs(PartOfSpeech::Noun) {
+        let want = singularize(w);
+        let found = crate::lemmas_for(w, PartOfSpeech::Noun);
+        // When singularize's answer is a dictionary lemma it comes first;
+        // otherwise (a policy-listed word WordNet lacks, a typo form the
+        // policy excludes) it is no candidate at all.
+        if is_lemma_of(&want, PartOfSpeech::Noun) {
+            let got = found.first().map(|l| l.text);
+            if got != Some(&*want) {
+                bad.push(std::format!("{w}: {got:?} but singularize gives {want}"));
+            }
+        } else if found.clone().any(|l| l.text == &*want) {
+            bad.push(std::format!("{w}: lists non-lemma {want}"));
+        }
+        if crate::lemmatize(w, PartOfSpeech::Noun) != want {
+            bad.push(std::format!("{w}: lemmatize differs from singularize"));
+        }
+    }
+    assert!(bad.is_empty(), "noun candidates:\n{}", bad.join("\n"));
+}
+
+#[test]
+fn a_noun_candidate_is_a_dictionary_lemma_not_a_policy_word() {
+    use PartOfSpeech::Noun;
+    for w in ["ellipses", "chasses", "pooves"] {
+        assert!(!is_lemma_of(w, Noun), "{w} is now a WordNet noun");
+        assert!(crate::lemmas_for(w, Noun).all(|l| l.text != w), "{w}");
+        assert_eq!(crate::lemmatize(w, Noun), singularize(w));
+    }
+}
+
+#[test]
+fn short_and_letterless_lemmas_list_themselves() {
+    use PartOfSpeech::*;
+    let own = |w: &str, pos| {
+        crate::lemmas_for(w, pos)
+            .map(|l| l.text)
+            .collect::<Vec<_>>()
+    };
+    assert!(is_lemma_of("a", Noun) && is_lemma_of("10", Adjective));
+    assert_eq!(own("a", Noun), ["a"]);
+    assert_eq!(own("10", Adjective), ["10"]);
+    assert_eq!(crate::lemmatize("10", Adjective), "10");
+    assert_eq!(singularize("a"), "a");
+    // Not a lemma of that part of speech: nothing; and not one word: nothing.
+    assert!(own("10", Verb).is_empty() && own("s", Verb).is_empty());
+    assert!(crate::lemmas("").is_empty() && crate::lemmas(" a").is_empty());
+}
+
+#[test]
+fn capitalised_only_lemmas_are_known_but_never_a_rule_target() {
+    use PartOfSpeech::*;
+    let first = |w: &str, pos| crate::lemmas_for(w, pos).first();
+    let lemma = |text, pos| Some(crate::Lemma { text, pos });
+    assert_eq!(first("Americanize", Verb), lemma("americanize", Verb));
+    assert_eq!(first("african", Adjective), lemma("african", Adjective));
+    assert!(matches!(
+        crate::lemmatize("Americanize", Verb),
+        Cow::Borrowed(_)
+    ));
+    assert_eq!(crate::lemmatize("Americanize", Verb), "Americanize");
+    assert_eq!(crate::lemmatize("AFRICAN", Adjective), "AFRICAN");
+    // The word is known, so it is not a lemma of a lower-case rule stem: the
+    // plural "africans" has no adjective reading through "african".
+    for (names, pos) in [
+        (data::VERB_NAMES, Verb),
+        (data::ADJECTIVE_NAMES, Adjective),
+        (data::ADVERB_NAMES, Adverb),
+    ] {
+        for w in names.lines() {
+            for suffix in ["s", "es", "ed", "ing", "er", "est"] {
+                let longer = std::format!("{w}{suffix}");
+                assert!(
+                    crate::lemmas_for(&longer, pos).all(|l| l.text != w),
+                    "{longer} reaches {w}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn lemma_tables_are_well_formed() {
+    for (pos, words, names, forms) in lemma_pos() {
+        well_formed_lines(words);
+        well_formed_lines(names);
+        for w in names.lines() {
+            assert!(
+                !contains(words, w),
+                "{w} is both a lemma and capitalised-only"
+            );
+        }
+        assert!(is_strictly_sorted(forms), "{pos:?} forms unsorted");
+        for &(form, lemma) in forms {
+            assert!(
+                contains(words, lemma) || contains(names, lemma),
+                "{form} -> {lemma} is no {pos:?}"
+            );
+            assert!(
+                form == form.to_lowercase() && form.trim() == form && !form.is_empty(),
+                "{form:?}"
+            );
+        }
+    }
+    let keys: Vec<(&str, PartOfSpeech)> = policy::LEMMA_CHOICE.iter().map(|r| (r.0, r.1)).collect();
+    assert!(is_strictly_sorted(&keys), "LEMMA_CHOICE unsorted");
+    for &(form, pos, lemma) in policy::LEMMA_CHOICE {
+        assert!(
+            pos != PartOfSpeech::Noun && is_lemma_of(lemma, pos),
+            "{form}"
+        );
+    }
+    assert!(is_strictly_sorted(policy::LEMMA_EXCLUDED));
+    for &(form, pos, lemma) in policy::LEMMA_EXCLUDED {
+        assert!(pos != PartOfSpeech::Noun, "{form}");
+        let table = lemma_pos().iter().find(|r| r.0 == pos).map(|r| r.3);
+        let listed = table.is_some_and(|t| t.contains(&(form, lemma)));
+        assert!(!listed, "{form} -> {lemma} is excluded but listed");
+    }
+}
+
+#[test]
+fn others_words_offer_only_nouns_they_are_the_plural_of() {
+    use PartOfSpeech::Noun;
+    let mut with_reading = 0;
+    for w in data::OTHERS.lines() {
+        for l in crate::lemmas_for(w, Noun) {
+            with_reading += 1;
+            // The same gate as singularize: the word is not a noun, so a
+            // noun reading must be one whose plural the word is.
+            assert_eq!(
+                crate::resolve::plural(l.text).0,
+                w,
+                "{w}: noun candidate {} is not a noun it is the plural of",
+                l.text
+            );
+            assert_eq!(singularize(w), l.text, "{w}");
+        }
+    }
+    assert!(with_reading > 0, "no OTHERS word has a noun reading");
 }

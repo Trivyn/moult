@@ -14,6 +14,15 @@ const WITH_MAIN: &str = r#"fn main() {
 }
 "#;
 
+const WITH_LEMMAS_MAIN: &str = r#"fn main() {
+    let word = std::env::args().nth(1).unwrap_or_else(|| "cities".to_string());
+    println!("{}", moult::singularize(&word));
+    println!("{}", moult::pluralize(&word));
+    println!("{}", moult::lemmatize(&word, moult::PartOfSpeech::Verb));
+    println!("{}", moult::lemmas(&word).len());
+}
+"#;
+
 const WITHOUT_MAIN: &str = r#"fn main() {
     let word = std::env::args().nth(1).unwrap_or_else(|| "cities".to_string());
     println!("{word}");
@@ -127,6 +136,14 @@ pub fn run() -> Result<(), String> {
     let with = probe_binary(&probes, "with", WITH_MAIN, Some(&root), &bin_target)?;
     let without = probe_binary(&probes, "without", WITHOUT_MAIN, None, &bin_target)?;
     let delta = with as i64 - without as i64;
+    let with_lemmas = probe_binary(
+        &probes,
+        "with-lemmas",
+        WITH_LEMMAS_MAIN,
+        Some(&root),
+        &bin_target,
+    )?;
+    let lemma_delta = with_lemmas as i64 - without as i64;
 
     // 2. Clean compile times.
     let build_target = probes.join("build");
@@ -150,7 +167,15 @@ pub fn run() -> Result<(), String> {
     let target_dir = std::env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| root.join("target"));
-    let crate_file = target_dir.join("package/moult-0.0.0.crate");
+    let manifest = fs::read_to_string(root.join("Cargo.toml")).map_err(|e| e.to_string())?;
+    let version = manifest
+        .lines()
+        .find_map(|l| l.strip_prefix("version = \""))
+        .and_then(|l| l.split('"').next())
+        .ok_or("no version in Cargo.toml")?
+        .to_string();
+    let crate_name = format!("moult-{version}.crate");
+    let crate_file = target_dir.join("package").join(&crate_name);
     let package = file_len(&crate_file)?;
 
     println!("moult size report (MB = 1,000,000 bytes)");
@@ -164,6 +189,14 @@ pub fn run() -> Result<(), String> {
     println!(
         "  delta           {delta:>12} bytes  {:>7.2} MB",
         delta as f64 / 1_000_000.0
+    );
+    println!(
+        "  with lemmas     {with_lemmas:>12} bytes  {:>7.2} MB",
+        mb(with_lemmas)
+    );
+    println!(
+        "  lemma delta     {lemma_delta:>12} bytes  {:>7.2} MB  (singularize + pluralize + lemmatize + lemmas)",
+        lemma_delta as f64 / 1_000_000.0
     );
     println!();
     println!("compile time: clean `cargo build -p moult`");
@@ -179,7 +212,7 @@ pub fn run() -> Result<(), String> {
     println!();
     println!("package: `cargo package -p moult --allow-dirty --no-verify`");
     println!(
-        "  moult-0.0.0.crate  {package:>8} bytes  {:>7.2} MB",
+        "  {crate_name}  {package:>8} bytes  {:>7.2} MB",
         mb(package)
     );
     Ok(())
