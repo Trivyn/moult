@@ -174,3 +174,75 @@ fn pluralize_is_identical_in_both_modes() {
         assert_eq!(g.pluralize(w), plain.pluralize(w), "pluralize({w})");
     }
 }
+
+#[test]
+fn third_person_does_not_guess_by_default() {
+    use std::borrow::Cow;
+    let plain = Inflector::builder().build().unwrap();
+    let default = Inflector::default();
+    for w in ["upsert", "onboard", "dockerize"] {
+        for got in [
+            moult::third_person_singular(w),
+            plain.third_person_singular(w),
+            default.third_person_singular(w),
+        ] {
+            assert!(matches!(got, Cow::Borrowed(s) if s == w), "{w}");
+        }
+    }
+}
+
+#[test]
+fn guesses_third_person_of_unknown_verbs() {
+    let g = guessing();
+    for (input, want) in [
+        ("upsert", "upserts"),
+        ("onboard", "onboards"),
+        ("dockerize", "dockerizes"),
+        // Guessed -o verbs always take -s.
+        ("flurbo", "flurbos"),
+        ("glorch", "glorches"),
+        ("blorpy", "blorpies"),
+    ] {
+        assert_eq!(g.third_person_singular(input), want, "{input}");
+    }
+}
+
+#[test]
+fn third_person_guess_refuses_forms_and_non_lower_case_words() {
+    use std::borrow::Cow;
+    let g = guessing();
+    for w in [
+        // Forms of a known verb have lemma candidates.
+        "lives",
+        "lived",
+        "living",
+        // Unknown forms are refused by their endings.
+        "upserts",
+        "upserted",
+        "upserting",
+        // Capitalised, non-letter and short inputs are refused.
+        "Upsert",
+        "ups3rt",
+        "abc",
+    ] {
+        assert!(
+            matches!(g.third_person_singular(w), Cow::Borrowed(s) if s == w),
+            "{w}"
+        );
+    }
+}
+
+#[test]
+fn third_person_guess_never_changes_a_known_verbs_answer() {
+    let g = guessing();
+    let plain = Inflector::new();
+    let verbs = include_str!("../src/verbs.txt");
+    let names = include_str!("../src/verb_names.txt");
+    for w in verbs.lines().chain(names.lines()) {
+        assert_eq!(
+            g.third_person_singular(w),
+            plain.third_person_singular(w),
+            "{w}"
+        );
+    }
+}

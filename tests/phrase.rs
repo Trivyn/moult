@@ -3,7 +3,10 @@
 
 use std::borrow::Cow;
 
-use moult::{pluralize, pluralize_phrase, singularize, singularize_phrase, Inflector};
+use moult::{
+    pluralize, pluralize_phrase, singularize, singularize_phrase, third_person_singular,
+    third_person_singular_phrase, Inflector,
+};
 
 #[test]
 fn inflects_the_last_word() {
@@ -132,4 +135,56 @@ fn a_last_word_ending_in_punctuation_is_unchanged() {
         singularize_phrase("dry docks,"),
         Cow::Borrowed("dry docks,")
     ));
+}
+
+#[test]
+fn third_person_inflects_the_first_word() {
+    let inflector = Inflector::new();
+    for (input, want) in [
+        ("live in", "lives in"),
+        ("take place in", "takes place in"),
+        ("belong to", "belongs to"),
+        ("  carry out\n", "  carries out\n"),
+        ("Live In", "Lives In"),
+        ("live", "lives"),
+        // char::is_whitespace includes U+00A0.
+        ("live\u{a0}in", "lives\u{a0}in"),
+    ] {
+        for got in [
+            third_person_singular_phrase(input),
+            inflector.third_person_singular_phrase(input),
+        ] {
+            assert_eq!(got, want, "{input:?}");
+            assert!(matches!(got, Cow::Owned(_)), "{input:?}");
+        }
+    }
+    assert_eq!(
+        third_person_singular_phrase("live"),
+        third_person_singular("live")
+    );
+}
+
+#[test]
+fn third_person_phrase_is_borrowed_when_unchanged() {
+    let inflector = Inflector::new();
+    for input in ["", "   ", "qwzzx in", "can buy"] {
+        for got in [
+            third_person_singular_phrase(input),
+            inflector.third_person_singular_phrase(input),
+        ] {
+            assert!(matches!(got, Cow::Borrowed(s) if s == input), "{input:?}");
+        }
+    }
+}
+
+#[test]
+fn a_third_person_override_applies_to_the_first_word() {
+    let inflector = Inflector::builder()
+        .third_person_singular("can", "cans")
+        .build()
+        .unwrap();
+    assert_eq!(
+        inflector.third_person_singular_phrase("Can Buy"),
+        "Cans Buy"
+    );
 }

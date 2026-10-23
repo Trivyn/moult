@@ -6,7 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::policy;
 use crate::pos::{PartOfSpeech, LEMMA_CAPACITY};
 use crate::rules::{
-    adjective_stems, checked_singular, has_plural_shape, plural, singular_candidates, verb_stems,
+    adjective_stems, checked_singular, has_plural_shape, plural, singular_candidates, third_person,
+    verb_stems,
 };
 use crate::wordnet::{PosTables, Wordnet, LEMMA_POS};
 
@@ -21,6 +22,11 @@ pub struct Policy<'a> {
     pub ch_regular: &'a [&'a str],
     pub s_regular: &'a [&'a str],
     pub lemma_choice: &'a [(&'a str, PartOfSpeech, &'a str)],
+    pub modals: &'a [&'a str],
+    pub third_person: &'a [(&'a str, &'a str)],
+    pub o_es: &'a [&'a str],
+    pub o_s: &'a [&'a str],
+    pub third_person_excluded: &'a [(&'a str, &'a str)],
     pub lemma_excluded: &'a [(&'a str, PartOfSpeech, &'a str)],
 }
 
@@ -37,6 +43,11 @@ impl Policy<'static> {
             s_regular: policy::S_REGULAR,
             lemma_choice: policy::LEMMA_CHOICE,
             lemma_excluded: policy::LEMMA_EXCLUDED,
+            modals: policy::MODALS,
+            third_person: policy::THIRD_PERSON,
+            o_es: policy::O_ES,
+            o_s: policy::O_S,
+            third_person_excluded: policy::THIRD_PERSON_EXCLUDED,
         }
     }
 }
@@ -73,6 +84,17 @@ impl Policy<'_> {
             return f.clone();
         }
         self.rule_plural(wn, lemma)
+    }
+
+    /// The third person singular the runtime gives a known verb lemma.
+    fn runtime_third_person(&self, lemma: &str) -> String {
+        if self.modals.contains(&lemma) {
+            return lemma.to_string();
+        }
+        if let Some((_, form)) = self.third_person.iter().find(|(v, _)| *v == lemma) {
+            return form.to_string();
+        }
+        third_person(lemma, self.o_es.contains(&lemma))
     }
 
     fn singular_choice(&self, w: &str) -> bool {
@@ -286,6 +308,12 @@ impl<'a> PosIndex<'a> {
 
 fn is_cons(c: char) -> bool {
     c.is_ascii_lowercase() && !matches!(c, 'a' | 'e' | 'i' | 'o' | 'u')
+}
+
+fn ends_consonant_o(lemma: &str) -> bool {
+    lemma
+        .strip_suffix('o')
+        .is_some_and(|stem| stem.chars().last().is_some_and(is_cons))
 }
 
 /// Whether `lemma` ends consonant-vowel-consonant, the last not `w`, `x` or
@@ -1037,6 +1065,92 @@ fn validate(wn: &Wordnet, pol: &Policy, an: &Analysis) -> Vec<String> {
             out.push(format!("{name}: stale, not a WordNet form"));
         }
     }
+    for (name, list) in [("MODALS", pol.modals), ("O_ES", pol.o_es), ("O_S", pol.o_s)] {
+        for w in list.windows(2).filter(|w| w[0] >= w[1]) {
+            out.push(format!(
+                "{name} {:?}: not sorted, or duplicate entry after {:?}",
+                w[1], w[0]
+            ));
+        }
+        for w in list {
+            // Most modals (must, should, may) are not WordNet verbs, so a modal
+            // need only be lower case; O_ES and O_S classify WordNet verbs.
+            if w.to_lowercase() != *w {
+                out.push(format!("{name} {w:?}: not lower case"));
+            } else if name != "MODALS" && !wn.verb.lemmas.contains(*w) {
+                out.push(format!("{name} {w:?}: not a lower-case WordNet verb lemma"));
+            }
+            if name != "MODALS" && !ends_consonant_o(w) {
+                out.push(format!("{name} {w:?}: not a consonant + o verb"));
+            }
+        }
+    }
+    for w in pol.o_es {
+        if pol.o_s.contains(w) {
+            out.push(format!("O_ES {w:?}: also in O_S"));
+        }
+    }
+    for lemma in &wn.verb.lemmas {
+        if ends_consonant_o(lemma)
+            && !pol.o_es.contains(&lemma.as_str())
+            && !pol.o_s.contains(&lemma.as_str())
+        {
+            out.push(format!(
+                "O_ES / O_S {lemma:?}: unclassified consonant + o verb"
+            ));
+        }
+    }
+    for w in pol.third_person.windows(2).filter(|w| w[0].0 >= w[1].0) {
+        out.push(format!(
+            "THIRD_PERSON {:?}: not sorted by verb, or duplicate verb after {:?}",
+            w[1], w[0]
+        ));
+    }
+    for (verb, form) in pol.third_person {
+        let name = format!("THIRD_PERSON ({verb:?}, {form:?})");
+        if !wn.verb.lemmas.contains(*verb) || verb.to_lowercase() != *verb {
+            out.push(format!("{name}: not a lower-case WordNet verb lemma"));
+        }
+        if !wn
+            .verb
+            .forms
+            .contains(&(form.to_string(), verb.to_string()))
+        {
+            out.push(format!("{name}: not a WordNet verb form"));
+        }
+    }
+    for w in pol
+        .third_person_excluded
+        .windows(2)
+        .filter(|w| w[0] >= w[1])
+    {
+        out.push(format!(
+            "THIRD_PERSON_EXCLUDED {:?}: not sorted, or duplicate entry after {:?}",
+            w[1], w[0]
+        ));
+    }
+    for (form, lemma) in pol.third_person_excluded {
+        if !wn
+            .verb
+            .forms
+            .contains(&(form.to_string(), lemma.to_string()))
+        {
+            out.push(format!(
+                "THIRD_PERSON_EXCLUDED ({form:?}, {lemma:?}): stale, not a WordNet verb form"
+            ));
+        }
+    }
+    for (form, lemma) in &wn.verb.forms {
+        if form.ends_with('s')
+            && *form != pol.runtime_third_person(lemma)
+            && !pol.third_person.contains(&(lemma.as_str(), form.as_str()))
+            && !pol
+                .third_person_excluded
+                .contains(&(form.as_str(), lemma.as_str()))
+        {
+            out.push(format!("THIRD_PERSON / THIRD_PERSON_EXCLUDED ({form:?}, {lemma:?}): unclassified WordNet verb form"));
+        }
+    }
     out
 }
 
@@ -1079,6 +1193,11 @@ mod tests {
             s_regular: &[],
             lemma_choice: &[],
             lemma_excluded: &[],
+            modals: &[],
+            third_person: &[],
+            o_es: &[],
+            o_s: &[],
+            third_person_excluded: &[],
         }
     }
 
@@ -1444,6 +1563,7 @@ mod tests {
                 ("b", PartOfSpeech::Verb, "b"),
                 ("a", PartOfSpeech::Verb, "a"),
             ],
+            ..no_policy()
         };
         let p = problems(&wn, &pol);
         for list in [
@@ -1601,6 +1721,204 @@ mod tests {
             ..no_policy()
         };
         assert!(problems(&wn, &stale).iter().any(|x| x.contains("stale")));
+    }
+
+    fn verb_wordnet() -> Wordnet {
+        let mut wn = Wordnet::default();
+        for verb in ["be", "can", "carry", "gas", "go", "kayo", "live"] {
+            wn.verb.lemmas.insert(verb.into());
+        }
+        wn.verb.capitalised.insert("americanize".into());
+        wn
+    }
+
+    #[test]
+    fn third_person_lists_require_lower_case_verb_lemmas() {
+        let wn = verb_wordnet();
+        let pol = Policy {
+            modals: &["Must", "can", "zzz"],
+            o_es: &["Go"],
+            o_s: &["zzz"],
+            third_person: &[("zzz", "zzzs")],
+            ..no_policy()
+        };
+        let p = problems(&wn, &pol);
+        for needle in ["MODALS \"Must\"", "O_ES \"Go\""] {
+            assert!(
+                p.iter()
+                    .any(|x| x.contains(needle) && x.contains("not lower case")),
+                "{needle}: {p:?}"
+            );
+        }
+        for needle in ["O_S \"zzz\"", "THIRD_PERSON (\"zzz\", \"zzzs\")"] {
+            assert!(
+                p.iter().any(
+                    |x| x.contains(needle) && x.contains("not a lower-case WordNet verb lemma")
+                ),
+                "{needle}: {p:?}"
+            );
+        }
+        // A modal need not be a WordNet verb.
+        assert!(!p.iter().any(|x| x.contains("MODALS \"can\"")));
+        assert!(!p.iter().any(|x| x.contains("MODALS \"zzz\"")));
+    }
+
+    #[test]
+    fn third_person_lists_require_sorted_unique_entries() {
+        let wn = verb_wordnet();
+        for duplicate in [false, true] {
+            let words: &[&str] = if duplicate {
+                &["go", "go"]
+            } else {
+                &["go", "can"]
+            };
+            let pairs: &[(&str, &str)] = if duplicate {
+                &[("gas", "gasses"), ("gas", "gases")]
+            } else {
+                &[("gas", "gasses"), ("be", "is")]
+            };
+            let excluded: &[(&str, &str)] = if duplicate {
+                &[("was", "be"), ("was", "be")]
+            } else {
+                &[("was", "be"), ("is", "be")]
+            };
+            let pol = Policy {
+                modals: words,
+                o_es: words,
+                o_s: words,
+                third_person: pairs,
+                third_person_excluded: excluded,
+                ..no_policy()
+            };
+            let p = problems(&wn, &pol);
+            for list in [
+                "MODALS",
+                "O_ES",
+                "O_S",
+                "THIRD_PERSON",
+                "THIRD_PERSON_EXCLUDED",
+            ] {
+                assert!(
+                    p.iter().any(|x| x.starts_with(list)
+                        && x.contains("not sorted")
+                        && x.contains('"')),
+                    "{list}: {p:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn consonant_o_verbs_require_one_classification() {
+        let wn = verb_wordnet();
+        let pol = Policy {
+            o_es: &["go"],
+            ..no_policy()
+        };
+        let p = problems(&wn, &pol);
+        assert!(p
+            .iter()
+            .any(|x| x.contains("O_ES / O_S \"kayo\"") && x.contains("unclassified")));
+        let pol = Policy {
+            o_es: &["go"],
+            o_s: &["go", "kayo"],
+            ..no_policy()
+        };
+        let p = problems(&wn, &pol);
+        assert!(p.iter().any(|x| x.contains("O_ES \"go\": also in O_S")));
+        let pol = Policy {
+            o_es: &["go"],
+            o_s: &["kayo"],
+            ..no_policy()
+        };
+        assert!(problems(&wn, &pol).is_empty());
+    }
+
+    #[test]
+    fn o_lists_require_consonant_o_verbs() {
+        for word in ["boo", "go", "kayo", "live", "o"] {
+            let mut wn = Wordnet::default();
+            wn.verb.lemmas.insert(word.into());
+            let words = &[word];
+            for (name, pol) in [
+                (
+                    "O_ES",
+                    Policy {
+                        o_es: words,
+                        ..no_policy()
+                    },
+                ),
+                (
+                    "O_S",
+                    Policy {
+                        o_s: words,
+                        ..no_policy()
+                    },
+                ),
+            ] {
+                let p = problems(&wn, &pol);
+                if matches!(word, "go" | "kayo") {
+                    assert!(p.is_empty(), "{name} {word:?}: {p:?}");
+                } else {
+                    assert!(
+                        p.iter()
+                            .any(|x| x == &format!("{name} {word:?}: not a consonant + o verb")),
+                        "{name} {word:?}: {p:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn verb_s_forms_must_match_the_rules_or_be_classified() {
+        let mut wn = verb_wordnet();
+        for (form, lemma) in [
+            ("carries", "carry"),
+            ("gasses", "gas"),
+            ("goes", "go"),
+            ("kayos", "kayo"),
+            ("lives", "live"),
+            ("is", "be"),
+            ("was", "be"),
+        ] {
+            wn.verb.forms.insert((form.into(), lemma.into()));
+        }
+        let pol = Policy {
+            modals: &["can"],
+            o_es: &["go"],
+            o_s: &["kayo"],
+            third_person: &[("be", "is"), ("gas", "gasses")],
+            third_person_excluded: &[("was", "be")],
+            ..no_policy()
+        };
+        assert!(problems(&wn, &pol).is_empty());
+        let missing = Policy {
+            third_person: &[],
+            third_person_excluded: &[],
+            ..pol
+        };
+        let p = problems(&wn, &missing);
+        for form in ["gasses", "is", "was"] {
+            assert!(
+                p.iter().any(|x| x.contains(&format!("{form:?}"))
+                    && x.contains("unclassified WordNet verb form")),
+                "{form}: {p:?}"
+            );
+        }
+        let stale = Policy {
+            third_person: &[("be", "iss")],
+            third_person_excluded: &[("weres", "be")],
+            ..pol
+        };
+        let p = problems(&wn, &stale);
+        assert!(p
+            .iter()
+            .any(|x| x.contains("THIRD_PERSON (\"be\", \"iss\")")
+                && x.contains("not a WordNet verb form")));
+        assert!(p.iter().any(
+            |x| x.contains("THIRD_PERSON_EXCLUDED (\"weres\", \"be\")") && x.contains("stale")
+        ));
     }
 
     #[test]

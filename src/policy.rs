@@ -695,3 +695,83 @@ pub(crate) static LEMMA_EXCLUDED: &[(&str, PartOfSpeech, &str)] = &[
     // Sorted by byte order of the form, then part of speech, then lemma.
     ("overflown", PartOfSpeech::Verb, "overflow"), // participle of overfly only; overflow makes overflowed
 ];
+
+/// Modal verbs kept unchanged by third_person_singular. Only can and will
+/// are WordNet verbs (preserve in tins, bequeath); the rest are listed so the
+/// list is complete. The generator checks that it is sorted and lower case.
+pub(crate) static MODALS: &[&str] = &[
+    "can", "could", "may", "might", "must", "ought", "shall", "should", "will", "would",
+];
+
+/// Listed `(verb, form)` third person singulars. The generator validates
+/// the verb lemmas and checks WordNet's forms against these and the rules.
+pub(crate) static THIRD_PERSON: &[(&str, &str)] = &[
+    ("be", "is"),
+    ("degas", "degasses"),
+    ("gas", "gasses"),
+    ("have", "has"),
+    ("nonplus", "nonplusses"),
+    ("quiz", "quizzes"),
+    ("whiz", "whizzes"),
+];
+
+/// Consonant + `o` verbs that take `-es`. The generator validates the lemmas
+/// and requires every verb of that shape to be in O_ES or O_S.
+pub(crate) static O_ES: &[&str] = &[
+    "barricado",
+    "bastinado",
+    "bravo",
+    "buffalo",
+    "dado",
+    "do",
+    "echo",
+    "embargo",
+    "forego",
+    "forgo",
+    "fresco",
+    "go",
+    "misdo",
+    "outdo",
+    "outgo",
+    "overdo",
+    "redo",
+    "reecho",
+    "stucco",
+    "torpedo",
+    "undergo",
+    "undo",
+    "veto",
+    "zero",
+];
+
+/// Consonant + `o` verbs that take plain `-s`. The generator validates the
+/// lemmas and uses this list to refuse an unclassified verb of that shape.
+#[allow(dead_code)] // the generator uses it; the runtime needs only O_ES
+pub(crate) static O_S: &[&str] = &[
+    "bunco",
+    "crescendo",
+    "decrescendo",
+    "demo",
+    "disco",
+    "ditto",
+    "hollo",
+    "kayo",
+    "lasso",
+    "mambo",
+    "solo",
+    "tango",
+    "velcro",
+];
+
+/// WordNet `(form, lemma)` rows ending in `s` that are not the lemma's third
+/// person singular. The generator validates that every row is still live.
+#[allow(dead_code)] // the generator audits it; these remain lemmatization forms
+pub(crate) static THIRD_PERSON_EXCLUDED: &[(&str, &str)] = &[
+    ("chevies", "chivy"),
+    ("chivvies", "chivy"),
+    ("co-ordinates", "coordinate"),
+    ("programmes", "program"),
+    ("swops", "swap"),
+    ("tramels", "trammel"),
+    ("was", "be"),
+];

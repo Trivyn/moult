@@ -97,6 +97,13 @@ fn every_error_variant_has_a_minimal_input_and_a_message() {
                 .build(),
             OverrideError::DuplicateLemma("x".into()),
         ),
+        (
+            Inflector::builder()
+                .third_person_singular("can", "cans")
+                .third_person_singular("CAN", "can")
+                .build(),
+            OverrideError::DuplicateThirdPerson("can".into()),
+        ),
     ];
     for (got, want) in cases {
         let err = got.expect_err("build should fail");
@@ -178,4 +185,110 @@ fn borrowed_if_and_only_if_unchanged() {
             );
         }
     }
+}
+
+#[test]
+fn third_person_overrides_keep_case_and_register_the_verb_lemma() {
+    use std::borrow::Cow;
+    let inf = Inflector::builder()
+        .third_person_singular("can", "cans")
+        .build()
+        .unwrap();
+    for (input, want) in [("can", "cans"), ("Can", "Cans"), ("cans", "cans")] {
+        let got = inf.third_person_singular(input);
+        assert_eq!(got, want, "{input}");
+        assert_eq!(matches!(got, Cow::Borrowed(_)), input == want, "{input}");
+    }
+    assert_eq!(inf.lemmatize("cans", PartOfSpeech::Verb), "can");
+}
+
+#[test]
+fn third_person_overrides_reject_empty_or_whitespace_words() {
+    for word in ["", " ", "two words", "can\n", "\u{a0}"] {
+        for (verb, form) in [(word, "cans"), ("can", word)] {
+            let err = Inflector::builder()
+                .third_person_singular(verb, form)
+                .build()
+                .expect_err("invalid word");
+            assert_eq!(
+                err,
+                OverrideError::InvalidWord(word.into()),
+                "{verb:?} -> {form:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn third_person_and_explicit_verb_lemmas_must_agree() {
+    use PartOfSpeech::Verb;
+    let err = Inflector::builder()
+        .third_person_singular("can", "cans")
+        .lemma("cans", Verb, "x")
+        .build()
+        .expect_err("conflicting lemma");
+    assert_eq!(err, OverrideError::Conflict("cans".into()));
+    let inf = Inflector::builder()
+        .third_person_singular("can", "cans")
+        .lemma("cans", Verb, "can")
+        .build()
+        .unwrap();
+    assert_eq!(inf.third_person_singular("can"), "cans");
+    assert_eq!(inf.lemmatize("cans", Verb), "can");
+}
+
+#[test]
+fn third_person_override_forms_cannot_be_other_override_verbs() {
+    for form in ["b", "B"] {
+        for verb in ["b", "B"] {
+            for pairs in [[("a", form), (verb, "c")], [(verb, "c"), ("a", form)]] {
+                let mut builder = Inflector::builder();
+                for (verb, form) in pairs {
+                    builder = builder.third_person_singular(verb, form);
+                }
+                let err = builder.build().expect_err("conflicting form and verb");
+                assert_eq!(err, OverrideError::Conflict("b".into()), "{pairs:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn third_person_overrides_cannot_share_a_form() {
+    // Each form registers its verb as the verb lemma, so two verbs cannot
+    // claim one form.
+    for (first, second) in [("foo", "bar"), ("bar", "foo")] {
+        let err = Inflector::builder()
+            .third_person_singular(first, "zaps")
+            .third_person_singular(second, "zaps")
+            .build()
+            .expect_err("shared form");
+        assert_eq!(err, OverrideError::Conflict("zaps".into()));
+    }
+}
+
+#[test]
+fn third_person_override_can_keep_a_known_verb_unchanged() {
+    use std::borrow::Cow;
+    for (verb, form) in [("live", "live"), ("LIVE", "live"), ("live", "LIVE")] {
+        let inf = Inflector::builder()
+            .third_person_singular(verb, form)
+            .build()
+            .unwrap();
+        for input in ["live", "Live", "LIVE"] {
+            assert!(matches!(
+                inf.third_person_singular(input),
+                Cow::Borrowed(word) if word == input
+            ));
+        }
+    }
+}
+
+#[test]
+fn third_person_override_needs_no_guess_for_an_unknown_verb() {
+    let inf = Inflector::builder()
+        .third_person_singular("upsert", "upserts")
+        .build()
+        .unwrap();
+    assert_eq!(inf.third_person_singular("upsert"), "upserts");
 }

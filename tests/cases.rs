@@ -140,6 +140,62 @@ const SINGULAR: &[(&str, &str)] = &[
     ("tops", "top"),
 ];
 
+const THIRD_PERSON: &[(&str, &str)] = &[
+    // Sibilants take -es.
+    ("pass", "passes"),
+    ("fix", "fixes"),
+    ("buzz", "buzzes"),
+    ("watch", "watches"),
+    ("wash", "washes"),
+    // Consonant + o is classified by policy; vowel + o takes -s.
+    ("go", "goes"),
+    ("do", "does"),
+    ("undergo", "undergoes"),
+    ("echo", "echoes"),
+    ("veto", "vetoes"),
+    ("torpedo", "torpedoes"),
+    ("zero", "zeroes"),
+    ("boo", "boos"),
+    ("woo", "woos"),
+    ("radio", "radios"),
+    ("tattoo", "tattoos"),
+    ("shampoo", "shampoos"),
+    ("demo", "demos"),
+    ("solo", "solos"),
+    ("tango", "tangos"),
+    // Only consonant + y becomes -ies; other ordinary verbs take -s.
+    ("carry", "carries"),
+    ("play", "plays"),
+    ("obey", "obeys"),
+    ("live", "lives"),
+    ("belong", "belongs"),
+    ("take", "takes"),
+    // Listed doubling, with regular controls.
+    ("quiz", "quizzes"),
+    ("whiz", "whizzes"),
+    ("gas", "gasses"),
+    ("nonplus", "nonplusses"),
+    ("bus", "buses"),
+    ("focus", "focuses"),
+    // Irregular verbs and modals; need and dare are ordinary verbs.
+    ("be", "is"),
+    ("have", "has"),
+    ("can", "can"),
+    ("will", "will"),
+    ("must", "must"),
+    ("need", "needs"),
+    ("dare", "dares"),
+    // Case is kept, including upper-case suffixes.
+    ("Live", "Lives"),
+    ("LIVE", "LIVES"),
+    ("CARRY", "CARRIES"),
+    ("BE", "IS"),
+    ("Be", "Is"),
+    // Capitalised-only dictionary verbs are known in either case.
+    ("americanize", "americanizes"),
+    ("Americanize", "Americanizes"),
+];
+
 const PLURAL: &[(&str, &str)] = &[
     // Case of an irregular plural follows the word; a rule suffix stays lower case.
     ("CHILD", "CHILDREN"),
@@ -257,6 +313,15 @@ fn singularize_cases() {
 #[test]
 fn pluralize_cases() {
     check(PLURAL, moult::pluralize);
+}
+
+#[test]
+fn third_person_singular_cases() {
+    check(THIRD_PERSON, moult::third_person_singular);
+    let inflector = moult::Inflector::new();
+    for &(input, want) in THIRD_PERSON {
+        assert_eq!(inflector.third_person_singular(input), want, "{input}");
+    }
 }
 
 /// Lemmatization: forms that suffix stripping alone gets wrong or that need a

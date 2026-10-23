@@ -252,6 +252,69 @@ fn round_trip_holds_except_for_the_allowlist() {
 }
 
 #[test]
+fn third_person_round_trip_holds_except_for_spelling_variants() {
+    use PartOfSpeech::Verb;
+    // Spelling variants whose inflected forms lemmatize to a canonical spelling.
+    let expected = [
+        ("ax", "axe"),            // ax canonicalises to axe.
+        ("caddy", "caddie"),      // caddy canonicalises to caddie.
+        ("chevy", "chivy"),       // chevy canonicalises to chivy.
+        ("chivvy", "chivy"),      // chivvy canonicalises to chivy.
+        ("poleax", "poleaxe"),    // poleax canonicalises to poleaxe.
+        ("programme", "program"), // programme canonicalises to program.
+        ("stymie", "stymy"),      // stymie canonicalises to stymy.
+        ("swop", "swap"),         // swop canonicalises to swap.
+        ("whizz", "whiz"),        // whizz canonicalises to whiz.
+    ];
+    // Capitalised-only verbs ("Americanize", "French", "DJ") inflect, but no
+    // suffix rule of lemmatize reaches a capitalised-only lemma, so none of
+    // them round-trips. Those ending in punctuation ("g.i.", "o.k.") are kept
+    // unchanged and so lemmatize to themselves.
+    for v in data::VERB_NAMES.lines() {
+        let form = crate::third_person_singular(v);
+        let kept = !v.ends_with(char::is_alphanumeric);
+        assert_eq!(form == v, kept, "{v} -> {form}");
+        assert_eq!(crate::lemmatize(&form, Verb) == v, kept, "{v} -> {form}");
+    }
+    let mut failures = Vec::new();
+    for v in data::VERBS.lines() {
+        let form = crate::third_person_singular(v);
+        // Unchanged: the modals WordNet lists as verbs, and verbs ending in
+        // punctuation ("nol.pros.", "o.d.", "wildin'"), which have no end to
+        // append a suffix to.
+        let kept = matches!(v, "can" | "will") || !v.ends_with(char::is_alphanumeric);
+        assert_eq!(form == v, kept, "{v} -> {form}");
+        let lemma = crate::lemmatize(&form, Verb);
+        if lemma != v {
+            failures.push((v, lemma.into_owned()));
+        }
+    }
+    failures.sort_unstable();
+    let expected: Vec<(&str, String)> = expected
+        .iter()
+        .map(|&(v, lemma)| (v, lemma.into()))
+        .collect();
+    assert_eq!(failures, expected, "third person round-trip failures");
+}
+
+#[test]
+fn every_consonant_o_verb_is_classified() {
+    // Mirror the generator check so cargo test alone catches policy drift.
+    let bad: Vec<&str> = data::VERBS
+        .lines()
+        .filter(|v| {
+            v.strip_suffix('o').is_some_and(|stem| {
+                stem.chars()
+                    .last()
+                    .is_some_and(|c| c.is_ascii_lowercase() && !"aeiou".contains(c))
+            })
+        })
+        .filter(|v| !policy::O_ES.contains(v) && !policy::O_S.contains(v))
+        .collect();
+    assert!(bad.is_empty(), "unclassified consonant + o verbs: {bad:?}");
+}
+
+#[test]
 fn pluralize_never_yields_an_excluded_form() {
     let bad: Vec<String> = nouns()
         .filter_map(|l| {

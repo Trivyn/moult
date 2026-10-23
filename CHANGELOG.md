@@ -6,6 +6,60 @@ All notable changes to this crate are recorded here. The format follows
 Every release entry has a `Host storage compatibility` subsection. It is also
 copied into the annotated release-tag notes.
 
+## [0.4.0] - 2026-10-23
+
+### Added
+
+- `third_person_singular` and `third_person_singular_phrase`, as free
+  functions and as `Inflector` methods. The word function forms the third
+  person singular present of a WordNet verb lemma, including capitalised-only
+  verbs, with regular suffix rules and listed exceptions ("be" → "is",
+  "have" → "has", "gas" → "gasses"). Modals stay unchanged. Unknown verbs
+  stay unchanged unless `guess_unknown(true)` is set. The phrase function
+  inflects the FIRST whitespace-separated word (verb phrases are head-initial)
+  and keeps everything around it byte for byte ("  carry out\n" →
+  "  carries out\n"). Finding a verb later in a phrase stays the caller's job.
+  Results keep the input's case, including upper-case suffixes for all-caps
+  verbs ("LIVE" → "LIVES", "DJ" → "DJS", unlike noun "BOX" → "BOXes"),
+  and are `Cow::Borrowed` exactly when unchanged.
+- `InflectorBuilder::third_person_singular(verb, form)` and
+  `OverrideError::DuplicateThirdPerson`. An override also registers the reverse
+  verb lemma unless the verb equals its form (which means unchanged); an
+  explicit verb lemma override must agree.
+- `MODALS`, `THIRD_PERSON`, `O_ES`, `O_S` and `THIRD_PERSON_EXCLUDED` in
+  `src/policy.rs`. The generator checks sorted, unique entries, lower-case
+  verb lemmas and WordNet forms where applicable, complete classification of
+  consonant + `o` verbs, and classification of WordNet verb forms ending in
+  `s` that differ from the generated third person singular. `cargo xtask
+  report` lists the new policy rows.
+- Round-trip coverage: `lemmatize(third_person_singular(v), Verb) == v`
+  holds for every lower-case WordNet verb except 9 spelling variants that
+  `lemmatize` canonicalises: ax → axe, poleax → poleaxe, caddy → caddie,
+  chevy and chivvy → chivy, programme → program, stymie → stymy,
+  swop → swap, whizz → whiz. The 23 capitalised-only verbs that take a
+  suffix (Americanize, French, DJ, …) inflect but do not round-trip, because
+  no suffix rule of `lemmatize` reaches a capitalised-only lemma. Verbs ending
+  in punctuation (nol.pros., o.d., wildin', g.i., o.k.) come back unchanged.
+
+### Changed
+
+- `InflectorBuilder::guess_unknown(true)` also enables a guarded verb guess:
+  at least four lower-case ASCII letters, no verb lemma candidates, and no
+  ending `s` (except `ss`), `ed` or `ing`. Guessed `-o` words take plain `-s`.
+  The noun guess is unchanged; lemmas are never guessed.
+- `OverrideError` gains `DuplicateThirdPerson`. The enum is already
+  `#[non_exhaustive]`, so matches that compiled against 0.3.0 still compile.
+- The README, crate docs and package description cover verb inflection.
+  Existing noun, phrase and lemmatization outputs are unchanged.
+
+### Host storage compatibility
+
+None for existing data: `singularize`, `pluralize`, `is_noun`,
+`singularize_phrase`, `pluralize_phrase` and lemmatization return what 0.3.0
+returned for every input with existing overrides and settings. The new verb
+functions and overrides are additive. There are no table, codec or
+persisted-identifier shape changes, and no host migration is required.
+
 ## [0.3.0] - 2026-10-22
 
 ### Added
