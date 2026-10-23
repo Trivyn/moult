@@ -31,6 +31,20 @@ pub(crate) fn regular_plural(lemma: &str) -> String {
     out
 }
 
+/// The third person singular of `lemma`: consonant + `y` becomes `ies`;
+/// `s`, `x`, `z`, `ch` or `sh` takes `es`; consonant + `o` takes `es` when
+/// `o_es` is set; anything else takes `s`.
+pub(crate) fn third_person(lemma: &str, o_es: bool) -> String {
+    if o_es {
+        if let Some(stem) = lemma.strip_suffix('o') {
+            if stem.chars().last().is_some_and(|c| !is_vowel(c)) {
+                return String::from(lemma) + "es";
+            }
+        }
+    }
+    regular_plural(lemma)
+}
+
 /// The fewest characters a word ending in `-sis` needs for the `-ses` plural.
 /// It leaves `sis` itself and short words like `isis` to the regular rule.
 const MIN_SIS_LEN: usize = 5;

@@ -22,6 +22,7 @@ src/pos.rs
 src/resolve.rs
 src/rules.rs
 src/table_tests.rs
+src/verb.rs
 src/verb_names.txt
 src/verbs.txt
 tests/cases.rs

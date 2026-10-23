@@ -9,6 +9,15 @@ fn plur(w: &str) -> String {
     moult::pluralize(w).into_owned()
 }
 
+fn check_third_person_cow(w: &str) {
+    for got in [
+        moult::third_person_singular(w),
+        moult::third_person_singular_phrase(w),
+    ] {
+        assert_eq!(matches!(got, Cow::Borrowed(_)), got == w, "{w:?}");
+    }
+}
+
 #[test]
 fn case_patterns() {
     assert_eq!(sing("mice"), "mouse");
@@ -60,6 +69,7 @@ fn non_ascii_input_keeps_its_case_and_does_not_panic() {
         "😀s",
         "naïveté",
     ] {
+        check_third_person_cow(w);
         let _ = (
             moult::singularize(w),
             moult::pluralize(w),
@@ -72,11 +82,14 @@ fn non_ascii_input_keeps_its_case_and_does_not_panic() {
 fn very_long_words_take_the_allocating_path() {
     for n in [64, 65, 200, 5000] {
         let w = "a".repeat(n);
+        check_third_person_cow(&w);
         assert!(!moult::is_noun(&w));
         let _ = (moult::singularize(&w), moult::pluralize(&w));
         let wx = format!("{}s", "x".repeat(n));
+        check_third_person_cow(&wx);
         let _ = (moult::singularize(&wx), moult::pluralize(&wx));
         let wu = "É".repeat(n);
+        check_third_person_cow(&wu);
         let _ = (moult::singularize(&wu), moult::pluralize(&wu));
     }
     // A long word whose tail is a plural still inflects without panicking.
@@ -102,6 +115,11 @@ fn empty_whitespace_and_single_characters_are_unchanged() {
     ] {
         assert!(matches!(moult::singularize(w), Cow::Borrowed(_)), "{w:?}");
         assert!(matches!(moult::pluralize(w), Cow::Borrowed(_)), "{w:?}");
+        assert!(
+            matches!(moult::third_person_singular(w), Cow::Borrowed(s) if s == w),
+            "{w:?}"
+        );
+        check_third_person_cow(w);
     }
 }
 
@@ -158,13 +176,21 @@ fn random_strings_never_panic() {
         }
         for inflector in [&plain, &guessing] {
             let (s, p) = (inflector.singularize(&w), inflector.pluralize(&w));
+            let t = inflector.third_person_singular(&w);
+            let phrase = inflector.third_person_singular_phrase(&w);
             let _ = inflector.is_noun(&w);
             // Valid UTF-8 is guaranteed by the type; the output must also be sane.
             assert!(std::str::from_utf8(s.as_bytes()).is_ok());
             assert!(std::str::from_utf8(p.as_bytes()).is_ok());
+            for got in [&t, &phrase] {
+                assert!(std::str::from_utf8(got.as_bytes()).is_ok());
+                assert_eq!(matches!(got, Cow::Borrowed(_)), **got == w, "{w:?}");
+            }
             if !w.chars().any(char::is_alphabetic) {
                 assert_eq!(s, w, "{w:?}");
                 assert_eq!(p, w, "{w:?}");
+                assert_eq!(t, w, "{w:?}");
+                assert_eq!(phrase, w, "{w:?}");
             }
         }
         assert_eq!(plain.pluralize(&w), guessing.pluralize(&w), "{w:?}");
@@ -180,7 +206,12 @@ fn cow_is_borrowed_exactly_when_unchanged() {
         assert!(matches!(got, Cow::Owned(_)), "{plural} changed, so Owned");
     }
     for w in ["ID", "gas", "laches", "İstanbul", "data"] {
-        for got in [moult::singularize(w), moult::pluralize(w)] {
+        for got in [
+            moult::singularize(w),
+            moult::pluralize(w),
+            moult::third_person_singular(w),
+            moult::third_person_singular_phrase(w),
+        ] {
             if got == w {
                 assert!(
                     matches!(got, Cow::Borrowed(_)),
@@ -203,6 +234,7 @@ fn length_changing_lower_casing_keeps_case() {
     for w in [
         "ǅ", "ǅudo", "Straße", "STRAẞE", "straße", "ΟΔΟΣ", "Οδος", "οδος",
     ] {
+        check_third_person_cow(w);
         let (s, p) = (moult::singularize(w), moult::pluralize(w));
         assert!(s.starts_with(&w[..w.char_indices().nth(1).map_or(w.len(), |(i, _)| i)]));
         assert!(p.len() >= w.len() || p == w, "{w}");
@@ -214,6 +246,7 @@ fn length_changing_lower_casing_keeps_case() {
 #[test]
 fn pluralize_leaves_a_word_ending_in_punctuation_alone() {
     for w in ["dock,", "C++", "cat.", "dock-", "dock)", "dock'", "dock."] {
+        check_third_person_cow(w);
         assert!(
             matches!(moult::pluralize(w), Cow::Borrowed(s) if s == w),
             "{w}"

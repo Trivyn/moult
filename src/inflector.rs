@@ -37,19 +37,25 @@ use crate::resolve::{
 ///
 /// A lemma override ([`InflectorBuilder::lemma`]) does the same for
 /// [`lemmatize`](Inflector::lemmatize) and [`lemmas`](Inflector::lemmas).
+/// [`InflectorBuilder::third_person_singular`] overrides a verb's present
+/// form and registers its verb lemma.
 #[derive(Clone, Debug, Default)]
 pub struct Inflector {
     /// `(singular, plural)`, sorted by singular.
     by_singular: Vec<(Box<str>, Box<str>)>,
     /// `(plural, singular)`, sorted by plural.
     by_plural: Vec<(Box<str>, Box<str>)>,
+    /// `(verb, form)`, sorted by verb.
+    third_person: Vec<(Box<str>, Box<str>)>,
+    /// Forms of third person overrides, sorted.
+    third_person_forms: Vec<Box<str>>,
     /// Sorted.
     invariant: Vec<Box<str>>,
     /// `(form, part of speech, lemma)` for verbs, adjectives and adverbs,
     /// sorted by form and part of speech. Noun lemma overrides are pairs.
     lemmas: Vec<(Box<str>, PartOfSpeech, Box<str>)>,
-    /// Whether singularize guesses at words no dictionary-checked step
-    /// resolves; see [`InflectorBuilder::guess_unknown`].
+    /// Whether singularize and third_person_singular guess at unknown words;
+    /// see [`InflectorBuilder::guess_unknown`].
     guess_unknown: bool,
 }
 
@@ -67,6 +73,8 @@ impl Inflector {
         Inflector {
             by_singular: Vec::new(),
             by_plural: Vec::new(),
+            third_person: Vec::new(),
+            third_person_forms: Vec::new(),
             invariant: Vec::new(),
             lemmas: Vec::new(),
             guess_unknown: false,
@@ -197,6 +205,55 @@ impl Inflector {
         changed(word, key, &plural, origin)
     }
 
+    /// The third person singular present of the English verb `verb`.
+    ///
+    /// Overrides come first; the remaining order is in
+    /// [Third person singular](crate#third-person-singular). Returns
+    /// [`Cow::Borrowed`] when unchanged and keeps the input's case, including
+    /// upper-case suffixes for all-caps verbs. Use
+    /// [`third_person_singular_phrase`](Self::third_person_singular_phrase)
+    /// for a phrase.
+    ///
+    /// ```
+    /// let inflector = moult::Inflector::new();
+    /// assert_eq!(inflector.third_person_singular("LIVE"), "LIVES");
+    /// assert_eq!(inflector.third_person_singular("Be"), "Is");
+    /// ```
+    pub fn third_person_singular<'a>(&self, verb: &'a str) -> Cow<'a, str> {
+        let low = Lower::new(verb);
+        let key = low.as_str();
+        if let Ok(i) = self.third_person.binary_search_by(|(v, _)| (**v).cmp(key)) {
+            return changed(verb, key, &self.third_person[i].1, Origin::Form);
+        }
+        if self
+            .third_person_forms
+            .binary_search_by(|f| (**f).cmp(key))
+            .is_ok()
+        {
+            return Cow::Borrowed(verb);
+        }
+        match crate::verb::resolve(self, verb, key, self.guess_unknown) {
+            Some(form) => changed(verb, key, &form, Origin::Form),
+            None => Cow::Borrowed(verb),
+        }
+    }
+
+    /// The third person singular present of `phrase`: its first word is
+    /// inflected with [`third_person_singular`](Self::third_person_singular).
+    ///
+    /// The first run of non-whitespace characters changes; text around it is
+    /// kept byte for byte. Empty or all-whitespace input is unchanged. Returns
+    /// [`Cow::Borrowed`] when unchanged. Choosing a phrase whose first word is
+    /// its verb is the caller's job.
+    ///
+    /// ```
+    /// let inflector = moult::Inflector::new();
+    /// assert_eq!(inflector.third_person_singular_phrase("  carry out\n"), "  carries out\n");
+    /// ```
+    pub fn third_person_singular_phrase<'a>(&self, phrase: &'a str) -> Cow<'a, str> {
+        self.first_word(phrase, |word| self.third_person_singular(word))
+    }
+
     /// The singular form of the English noun phrase `phrase`: its last word
     /// ([`singularize`](Self::singularize)) with the rest kept as it was.
     ///
@@ -248,6 +305,32 @@ impl Inflector {
         let start = phrase[..end].rfind(char::is_whitespace).map_or(0, |i| {
             i + phrase[i..].chars().next().map_or(0, char::len_utf8)
         });
+        if start == end {
+            return Cow::Borrowed(phrase);
+        }
+        match inflect(&phrase[start..end]) {
+            Cow::Borrowed(_) => Cow::Borrowed(phrase),
+            Cow::Owned(word) => {
+                let mut out = String::with_capacity(phrase.len() - (end - start) + word.len());
+                out.push_str(&phrase[..start]);
+                out.push_str(&word);
+                out.push_str(&phrase[end..]);
+                Cow::Owned(out)
+            }
+        }
+    }
+
+    /// Applies `inflect` to the first run of non-whitespace characters of
+    /// `phrase` and keeps the rest. Borrowed exactly when `inflect` borrows.
+    fn first_word<'a>(
+        &self,
+        phrase: &'a str,
+        inflect: impl FnOnce(&'a str) -> Cow<'a, str>,
+    ) -> Cow<'a, str> {
+        let start = phrase.len() - phrase.trim_start().len();
+        let end = phrase[start..]
+            .find(char::is_whitespace)
+            .map_or(phrase.len(), |i| start + i);
         if start == end {
             return Cow::Borrowed(phrase);
         }
@@ -343,7 +426,7 @@ impl Inflector {
     }
 }
 
-/// Whether both directions leave `word` alone: it is one character, contains
+/// Whether inflection leaves `word` alone: it is one character, contains
 /// whitespace (so it is not one word), or has no letter.
 pub(crate) fn is_inert(word: &str) -> bool {
     let mut chars = word.chars();
@@ -375,6 +458,7 @@ fn finish(word: &str, result: String) -> Cow<'_, str> {
 #[derive(Clone, Debug, Default)]
 pub struct InflectorBuilder {
     pairs: Vec<(String, String)>,
+    third_person: Vec<(String, String)>,
     invariant: Vec<String>,
     lemmas: Vec<(String, PartOfSpeech, String)>,
     guess_unknown: bool,
@@ -385,6 +469,32 @@ impl InflectorBuilder {
     /// `singular`, and pluralize turns `singular` into `plural`.
     pub fn pair(mut self, singular: &str, plural: &str) -> Self {
         self.pairs.push((singular.into(), plural.into()));
+        self
+    }
+
+    /// Overrides the third person singular present of `verb` with `form`.
+    /// The form itself is kept unchanged. Both words are stored lower-case;
+    /// the input's case is restored, including all-caps suffixes.
+    ///
+    /// Unless the words are equal (which means unchanged), this also registers
+    /// the verb lemma `(form, Verb, verb)`. An explicit lemma override must
+    /// agree or [`build`](Self::build) fails with [`OverrideError::Conflict`].
+    /// A form that is another override's verb also fails with
+    /// [`OverrideError::Conflict`], after lower-casing both words.
+    /// Two overrides for one verb fail with
+    /// [`OverrideError::DuplicateThirdPerson`].
+    ///
+    /// ```
+    /// use moult::PartOfSpeech::Verb;
+    /// let inflector = moult::Inflector::builder()
+    ///     .third_person_singular("can", "cans")
+    ///     .build()
+    ///     .unwrap();
+    /// assert_eq!(inflector.third_person_singular("can"), "cans");
+    /// assert_eq!(inflector.lemmatize("cans", Verb), "can");
+    /// ```
+    pub fn third_person_singular(mut self, verb: &str, form: &str) -> Self {
+        self.third_person.push((verb.into(), form.into()));
         self
     }
 
@@ -440,6 +550,12 @@ impl InflectorBuilder {
     /// [`pluralize`](Inflector::pluralize) do not depend on this option, and
     /// neither does [`is_noun`](Inflector::is_noun).
     ///
+    /// Also lets [`third_person_singular`](Inflector::third_person_singular)
+    /// guess for an unknown word of at least four lower-case ASCII letters,
+    /// only when it has no verb lemma candidates and does not end in `s`
+    /// (except `ss`), `ed` or `ing`. It uses the verb suffix rules, with plain
+    /// `-s` for `-o` words. Known verbs do not depend on this option.
+    ///
     /// This is best-effort for words WordNet lacks. It can produce a
     /// non-word for a compound whose last part is a noun ("afterhours" gives
     /// "afterhour"). Leave it off when outputs are shown to users without
@@ -467,7 +583,11 @@ impl InflectorBuilder {
     /// overrides: a form or lemma that is empty or contains whitespace, a
     /// noun form equal to its lemma, and two lemmas for one form and part of speech,
     /// nouns included ([`OverrideError::DuplicateLemma`]), are rejected; a noun
-    /// lemma override is checked as the pair it stands for.
+    /// lemma override is checked as the pair it stands for. Third person
+    /// overrides reject invalid words and duplicate verbs; their implicit
+    /// verb lemmas must agree with explicit lemma overrides. A third person
+    /// form that is another override's verb fails with [`OverrideError::Conflict`]
+    /// after lower-casing; a verb equal to its own form is allowed.
     pub fn build(self) -> Result<Inflector, OverrideError> {
         let lower = |w: &String| -> Result<Box<str>, OverrideError> {
             if w.is_empty() || w.chars().any(char::is_whitespace) {
@@ -512,6 +632,37 @@ impl InflectorBuilder {
                 lemmas.push((form, pos, lemma));
             }
         }
+        let mut third_person = Vec::with_capacity(self.third_person.len());
+        for (verb, form) in &self.third_person {
+            third_person.push((lower(verb)?, lower(form)?));
+        }
+        third_person.sort();
+        if let Some(w) = adjacent_duplicate(third_person.iter().map(|p| &p.0)) {
+            return Err(OverrideError::DuplicateThirdPerson(w.into()));
+        }
+        for (verb, form) in &third_person {
+            if verb == form {
+                continue;
+            }
+            if third_person.binary_search_by(|(v, _)| v.cmp(form)).is_ok() {
+                return Err(OverrideError::Conflict(form.clone().into()));
+            }
+            if let Some((_, _, lemma)) = lemmas
+                .iter()
+                .find(|(f, p, _)| f == form && *p == PartOfSpeech::Verb)
+            {
+                if lemma != verb {
+                    return Err(OverrideError::Conflict(form.clone().into()));
+                }
+            } else {
+                lemmas.push((form.clone(), PartOfSpeech::Verb, verb.clone()));
+            }
+        }
+        lemmas.sort();
+        let mut third_person_forms: Vec<Box<str>> =
+            third_person.iter().map(|(_, f)| f.clone()).collect();
+        third_person_forms.sort();
+        third_person_forms.dedup();
         let mut invariant = Vec::with_capacity(self.invariant.len());
         for w in &self.invariant {
             invariant.push(lower(w)?);
@@ -545,6 +696,8 @@ impl InflectorBuilder {
         Ok(Inflector {
             by_singular,
             by_plural,
+            third_person,
+            third_person_forms,
             invariant,
             lemmas,
             guess_unknown: self.guess_unknown,
@@ -576,8 +729,20 @@ pub enum OverrideError {
     DuplicateSingular(String),
     /// Two pairs share this plural.
     DuplicatePlural(String),
-    /// The word has two roles: an invariant that is also in a pair, or a
-    /// plural of one pair that is the singular of another.
+    /// Two third person overrides share this verb.
+    ///
+    /// ```
+    /// let error = moult::Inflector::builder()
+    ///     .third_person_singular("can", "cans")
+    ///     .third_person_singular("CAN", "can")
+    ///     .build()
+    ///     .unwrap_err();
+    /// assert_eq!(error, moult::OverrideError::DuplicateThirdPerson("can".into()));
+    /// ```
+    DuplicateThirdPerson(String),
+    /// The word has conflicting lemma overrides, or two roles: an invariant
+    /// that is also in a pair, or a plural of one pair that is the singular of
+    /// another, or a third person form that is another override's verb.
     Conflict(String),
     /// Two lemma overrides share this form and part of speech.
     DuplicateLemma(String),
@@ -600,6 +765,9 @@ impl fmt::Display for OverrideError {
             }
             OverrideError::DuplicatePlural(w) => {
                 write!(f, "two override pairs have the plural {w:?}")
+            }
+            OverrideError::DuplicateThirdPerson(w) => {
+                write!(f, "two third person overrides have the verb {w:?}")
             }
             OverrideError::Conflict(w) => {
                 write!(f, "override word {w:?} has conflicting roles")

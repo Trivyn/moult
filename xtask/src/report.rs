@@ -5,6 +5,7 @@ use std::fmt::Write;
 
 use crate::classes::{Analysis, Entry, LemmaEntry};
 use crate::manifest::Manifest;
+use crate::policy;
 use crate::pos::LEMMA_CAPACITY;
 use crate::wordnet::{Wordnet, LEMMA_POS};
 
@@ -130,6 +131,24 @@ pub fn render(manifest: &Manifest, wn: &Wordnet, an: &Analysis) -> String {
         an.max_candidates.0,
         LEMMA_CAPACITY - 4
     );
+
+    let _ = writeln!(w, "\n== third person singular policy ==");
+    for (name, list) in [
+        ("MODALS", policy::MODALS),
+        ("O_ES", policy::O_ES),
+        ("O_S", policy::O_S),
+    ] {
+        let _ = writeln!(w, "{name} ({}): {}", list.len(), list.join(" "));
+    }
+    for (name, list) in [
+        ("THIRD_PERSON", policy::THIRD_PERSON),
+        ("THIRD_PERSON_EXCLUDED", policy::THIRD_PERSON_EXCLUDED),
+    ] {
+        let _ = writeln!(w, "{name} ({}):", list.len());
+        for (a, b) in list {
+            let _ = writeln!(w, "  {a} -> {b}");
+        }
+    }
 
     let _ = writeln!(w, "\n== samples ==");
     for (label, v) in [("L1", &an.l1), ("L2", &an.l2)] {

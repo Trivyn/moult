@@ -1,14 +1,18 @@
-//! English noun inflection checked against a dictionary.
+//! English inflection and lemmatization checked against a dictionary.
 //!
-//! `moult` turns an English noun into its singular or plural form. Suffix
+//! `moult` turns an English noun into its singular or plural form, forms the
+//! third person singular present of a verb, and finds dictionary lemmas. Suffix
 //! rules alone over-fire ("waves" → "wafe", "police" → "polouse") or
 //! under-fire ("analysis" → "analysi"). When singularizing, `moult` accepts a
 //! suffix rule's output only when it is a noun [Open English WordNet] knows,
 //! and it reads irregular forms from WordNet's own form list. Plural rules
 //! form a plural from the word without such a check, since a plural is not a
-//! lemma ("cat" → "cats"). A word WordNet does not contain comes back
-//! unchanged from [`singularize`] unless you opt in to a conservative guess
-//! with [`InflectorBuilder::guess_unknown`]; the free functions never guess.
+//! lemma ("cat" → "cats"). Verb inflection checks the input against WordNet's
+//! verb lemmas before forming its third person singular. A word WordNet does
+//! not contain comes back unchanged from [`singularize`] or
+//! [`third_person_singular`] unless you opt
+//! in to a conservative guess with [`InflectorBuilder::guess_unknown`]; the
+//! free functions never guess.
 //!
 //! ```
 //! assert_eq!(moult::singularize("waves"), "wave");
@@ -18,10 +22,11 @@
 //! ```
 //!
 //! [`singularize_phrase`] and [`pluralize_phrase`] do the same for a noun
-//! phrase: they inflect its last word (see [Phrases](#phrases)).
+//! phrase: they inflect its last word. [`third_person_singular_phrase`]
+//! inflects the first word of a verb phrase (see [Phrases](#phrases)).
 //!
-//! Both functions return a [`Cow`]: [`Cow::Borrowed`] with the input when the
-//! word comes back unchanged, so the common case allocates nothing.
+//! The inflection functions return a [`Cow`]: [`Cow::Borrowed`] with the input
+//! when the word comes back unchanged, so the common case allocates nothing.
 //! [`is_noun`] tells "unchanged because the dictionary knows it" from
 //! "unchanged because nothing does". An [`Inflector`] adds caller-supplied
 //! overrides in front of everything below.
@@ -129,6 +134,52 @@
 //!    `s`. A `-o` or `-f` noun takes a plain `s` unless WordNet lists an
 //!    `-oes` or `-ves` form.
 //!
+//! # Third person singular
+//!
+//! A verb resolves in this order; the first step that answers wins. Lookup
+//! is case-insensitive.
+//!
+//! 0. **Overrides**: a verb given to
+//!    [`InflectorBuilder::third_person_singular`] gives its form; an override
+//!    form is unchanged. A verb equal to its form means unchanged.
+//! 1. **Not a word**: input of one character, input containing whitespace,
+//!    input without a letter, or a word not ending in a letter or digit is
+//!    unchanged (see [`third_person_singular_phrase`] for phrases).
+//! 2. **Modals**, unchanged: can, could, may, might, must, ought, shall,
+//!    should, will and would. Need and dare are ordinary verbs here.
+//! 3. **Listed forms**: be → is, degas → degasses, gas → gasses, have → has,
+//!    nonplus → nonplusses, quiz → quizzes and whiz → whizzes.
+//! 4. **Known verb**: a WordNet verb or capitalised-only verb takes the suffix
+//!    rules. Consonant + `y` becomes `-ies` ("carry" → "carries"); `s`, `x`,
+//!    `z`, `ch` or `sh` takes `-es`; consonant + `o` takes `-es` only in a
+//!    closed list ("go" → "goes", "echo" → "echoes"). Anything else takes
+//!    `-s` ("live" → "lives", "boo" → "boos", "demo" → "demos").
+//! 5. **Unknown**, unchanged unless [`guess_unknown(true)`](InflectorBuilder::guess_unknown)
+//!    is set. Then the rules apply only to a word of at least four lower-case
+//!    ASCII letters with no verb candidates from that inflector's
+//!    [`lemmas_for`], and not ending in `s` (except `ss`), `ed` or `ing`.
+//!    Guessed `-o` words take plain `-s`. Known verb forms such as "lives"
+//!    and "lived" stay unchanged. Leaving a word alone beats inventing a
+//!    non-word; the free functions never guess.
+//!
+//! Every result keeps the input's case, including upper-case suffixes for
+//! all-caps verbs. The result is [`Cow::Borrowed`] exactly when unchanged.
+//!
+//! ```
+//! assert_eq!(moult::third_person_singular("carry"), "carries");
+//! assert_eq!(moult::third_person_singular("LIVE"), "LIVES");
+//! assert_eq!(moult::third_person_singular("be"), "is");
+//! ```
+//!
+//! With the free functions, `lemmatize(third_person_singular(v), Verb) == v`
+//! holds for every lower-case WordNet verb except 9 spelling variants that
+//! [`lemmatize`] canonicalises: ax → axe, poleax → poleaxe, caddy → caddie,
+//! chevy and chivvy → chivy, programme → program, stymie → stymy,
+//! swop → swap, whizz → whiz. The 23 capitalised-only verbs that take a
+//! suffix (Americanize, French, DJ, …) inflect but do not round-trip, because
+//! no suffix rule of `lemmatize` reaches a capitalised-only lemma. Verbs ending
+//! in punctuation (nol.pros., o.d., wildin', g.i., o.k.) come back unchanged.
+//!
 //! # Phrases
 //!
 //! [`singularize_phrase`] and [`pluralize_phrase`] find the last run of
@@ -146,9 +197,15 @@
 //! assert_eq!(moult::pluralize_phrase("dry dock"), "dry docks");
 //! ```
 //!
-//! Only the last word changes, so a head-initial compound inflects the wrong
-//! word: "attorney general" gives "attorney generals", not "attorneys
-//! general".
+//! [`third_person_singular_phrase`] instead inflects the first run of
+//! non-whitespace characters, with the same whitespace and borrowing contract.
+//! "live in" gives "lives in", and "  carry out\n" gives "  carries out\n".
+//! A phrase whose first word is not its verb is inflected wrongly; choosing
+//! the verb is the caller's job.
+//!
+//! Only the last word changes in the noun functions, so a head-initial
+//! compound inflects the wrong word: "attorney general" gives "attorney
+//! generals", not "attorneys general".
 //!
 //! # Lemmatize
 //!
@@ -233,7 +290,7 @@
 //!
 //! # Case
 //!
-//! Both directions keep the input's case pattern. The characters of the
+//! Inflection keeps the input's case pattern. The characters of the
 //! input are kept over the parts of the word that do not change ("Mothers-in-Law"
 //! → "Mother-in-Law"). A
 //! capitalised word stays capitalised ("Mice" → "Mouse", "Person" →
@@ -244,12 +301,16 @@
 //! ("ISBN" → "ISBNs", "BOX" → "BOXes"). A plural that is the word plus `s` or
 //! `es`, whether it came from a rule, WordNet or an override, counts as such a
 //! suffix ("OS" → "OSes", an override "SKU" → "SKUs"); an override plural of
-//! any other shape follows the word's case.
+//! any other shape follows the word's case. Verbs always follow the input's
+//! case, including the suffix: "LIVE" → "LIVES", unlike "BOX" → "BOXes";
+//! "CARRY" → "CARRIES" and "BE" → "IS". All-caps capitalised-only verbs
+//! take an upper-case suffix too ("DJ" → "DJS").
 //!
-//! [`singularize`] and [`pluralize`] read a single word; the phrase functions
-//! inflect the last word of a phrase. Splitting an identifier ("OrderLines",
-//! "farm_workers") and inflecting a head-initial compound's head ("attorney
-//! general") is the caller's job.
+//! [`singularize`], [`pluralize`] and [`third_person_singular`] read a single
+//! word; the phrase functions inflect the last word of a noun phrase or the
+//! first word of a verb phrase.
+//! Splitting an identifier ("OrderLines", "farm_workers") and inflecting a
+//! head-initial compound's head ("attorney general") is the caller's job.
 //!
 //! [Open English WordNet]: https://en-word.net/
 
@@ -268,6 +329,7 @@ mod policy;
 mod pos;
 mod resolve;
 mod rules;
+mod verb;
 
 pub use inflector::{Inflector, InflectorBuilder, OverrideError};
 pub use lemma::{Lemma, Lemmas};
@@ -305,6 +367,43 @@ pub fn singularize(word: &str) -> Cow<'_, str> {
 /// ```
 pub fn pluralize(word: &str) -> Cow<'_, str> {
     DEFAULT.pluralize(word)
+}
+
+/// The third person singular present of the English verb `verb`.
+///
+/// Returns [`Cow::Borrowed`] with the input when unchanged. Resolution is in
+/// [Third person singular](crate#third-person-singular). Input containing
+/// whitespace is unchanged; use [`third_person_singular_phrase`] for a phrase.
+///
+/// ```
+/// assert_eq!(moult::third_person_singular("live"), "lives");
+/// assert_eq!(moult::third_person_singular("Live"), "Lives");
+/// assert_eq!(moult::third_person_singular("be"), "is");
+/// assert_eq!(moult::third_person_singular("go"), "goes");
+/// assert_eq!(moult::third_person_singular("can"), "can");
+/// assert_eq!(moult::third_person_singular("qwzzx"), "qwzzx");
+/// assert!(matches!(moult::third_person_singular("qwzzx"), std::borrow::Cow::Borrowed(_)));
+/// ```
+pub fn third_person_singular(verb: &str) -> Cow<'_, str> {
+    DEFAULT.third_person_singular(verb)
+}
+
+/// The third person singular present of `phrase`: its first word is
+/// inflected and everything around it is kept byte for byte.
+///
+/// The first word is the first run of non-whitespace characters. Returns
+/// [`Cow::Borrowed`] when unchanged, including empty or all-whitespace input.
+/// Choosing a phrase whose first word is its verb is the caller's job.
+/// See [Phrases](crate#phrases).
+///
+/// ```
+/// assert_eq!(moult::third_person_singular_phrase("live in"), "lives in");
+/// assert_eq!(moult::third_person_singular_phrase("take place in"), "takes place in");
+/// assert_eq!(moult::third_person_singular_phrase("belong to"), "belongs to");
+/// assert_eq!(moult::third_person_singular_phrase("  carry out\n"), "  carries out\n");
+/// ```
+pub fn third_person_singular_phrase(phrase: &str) -> Cow<'_, str> {
+    DEFAULT.third_person_singular_phrase(phrase)
 }
 
 /// The singular form of the English noun phrase `phrase`: its last word is
@@ -346,8 +445,8 @@ pub fn pluralize_phrase(phrase: &str) -> Cow<'_, str> {
 /// Whether `word` is a noun Open English WordNet knows: a noun or name in the
 /// word lists, or a word the invariant list, the irregular forms or the
 /// checked rules reduce to a noun. The opt-in unknown-word guess does not
-/// count, so `false` means [`pluralize`] is guessing and [`singularize`] leaves
-/// the word alone. It is `false` for input that contains whitespace.
+/// count: `false` means no dictionary-checked noun reading was found. It is
+/// `false` for input that contains whitespace.
 ///
 /// ```
 /// assert!(moult::is_noun("mice"));

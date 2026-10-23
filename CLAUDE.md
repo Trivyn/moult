@@ -1,6 +1,6 @@
 # moult
 
-English noun inflection and lemmatization (`singularize`, `pluralize`, `lemmatize`) checked against Open English WordNet. A
+English noun inflection, verb third-person-singular forms and lemmatization (`singularize`, `pluralize`, `third_person_singular`, `lemmatize`) checked against Open English WordNet. A
 suffix rule's output is accepted only when it is a WordNet noun; irregular forms come from
 WordNet's form list; unchecked rules apply only to words WordNet does not contain. The crate
 docs in `src/lib.rs` define the resolution order — keep them and the code in step.
@@ -8,10 +8,11 @@ docs in `src/lib.rs` define the resolution order — keep them and the code in s
 ## Invariants
 
 1. **Deterministic, dictionary-checked.** No heuristic guesses without a WordNet check against
-   the part of speech being produced (noun for singularize/pluralize/is_noun; the requested
-   part of speech for lemmas/lemmas_for/lemmatize). The only exception is the noun fallback for
-   words WordNet does not contain (opt-in `guess_unknown`), and it stays conservative: leaving
-   a word unchanged beats inventing a non-word. Lemma candidates never come from guessing.
+   the part of speech being produced (noun for singularize/pluralize/is_noun; verb for
+   third_person_singular; the requested part of speech for lemmas/lemmas_for/lemmatize).
+   The unknown-word fallbacks for singularize and third_person_singular are opt-in
+   (`guess_unknown`); unknown verbs otherwise stay unchanged. They stay conservative:
+   leaving a word unchanged beats inventing a non-word. Lemma candidates never come from guessing.
 2. **No dependencies, `no_std` + `alloc`.** The runtime crate pulls in nothing. Tooling (the
    data generator) lives outside the published crate and may use what it needs.
 3. **Data is pinned and committed.** `src/data.rs` is generated from the release pinned in
@@ -24,13 +25,16 @@ docs in `src/lib.rs` define the resolution order — keep them and the code in s
    derived.
 5. **Case is kept.** Lookup is case-insensitive; output keeps the input's case pattern
    (acronyms stay upper case, capitalised words stay capitalised, "Made" gives "Make").
-   The one exception: lemma candidates (`Lemma::text`) are lower-case dictionary keys.
-6. **One word in, one word out.** `singularize`, `pluralize`, `is_noun`, `lemmas`,
-   `lemmas_for` and `lemmatize` take one word; input containing whitespace is returned
+   All-caps verbs take upper-case suffixes ("LIVE" → "LIVES"), unlike noun acronym
+   suffixes ("BOX" → "BOXes"). Lemma candidates (`Lemma::text`) are lower-case dictionary keys.
+6. **One word in, one word out.** `singularize`, `pluralize`, `third_person_singular`,
+   `is_noun`, `lemmas`, `lemmas_for` and `lemmatize` take one word; input containing whitespace is returned
    unchanged (`is_noun`: false; `lemmas`: empty). `singularize_phrase` and
    `pluralize_phrase` inflect only the final whitespace-separated word and keep the rest
-   byte-for-byte. Splitting identifiers (camelCase, snake_case) and choosing the head of a
-   head-initial compound ("attorney general") stay the caller's job.
+   byte-for-byte. `third_person_singular_phrase` inflects only the FIRST whitespace-separated
+   word and keeps the rest byte-for-byte. Splitting identifiers (camelCase, snake_case),
+   choosing the head of a head-initial compound ("attorney general"), and finding the verb
+   of a phrase that does not start with it stay the caller's job.
 7. **Consumer-neutral.** This is a public crate: no references to specific downstream
    projects in code, docs, or tests.
 
